@@ -1290,12 +1290,14 @@ function leg(a,b){
   } else note = 'By Disney transport or car';
   return {kind:'transfer', note:note, modes:m||''};
 }
-function dest(s){ return s.lat!=null ? (s.lat+','+s.lng) : (s.q||s.name); }
+function dest(s){ return s.lat!=null ? (s.lat+','+s.lng) : (offAddr(s) || s.q || s.name); }
+// The address of a home, rental or other hotel you stay at, read from the stay itself so a later edit is used.
+function offAddr(s){ if(!s || s.t!=='H') return ''; var y = typeof stayByName==='function' ? stayByName(s.name) : null; return y && y.off && y.addr ? y.addr : ''; }
 /* Apple Maps links follow Apple's current format: plain commas in coordinates, and plain place names.
    Apple looks names up best when the search is centred near the place, so every name search carries a centre. */
 var WDW = [28.3850,-81.5639];
 function aenc(v){ return encodeURIComponent(v).replace(/%2C/g, ','); }
-function appleName(s){ return s.aq || s.name.replace(/ \(arriving\)$/,''); }
+function appleName(s){ return offAddr(s) || s.aq || s.name.replace(/ \(arriving\)$/,''); }
 function appleBias(s){
   if(s.lat!=null) return '&center='+s.lat+','+s.lng+'&span=0.01,0.01';
   var pk = PARKS[s.z];
@@ -3331,7 +3333,7 @@ function renderDay(){
   if(editingTime()){ ui.deferDay = true; return; }
   ui.deferDay = false;
   if(!id){
-    el.innerHTML = linkBanner()+'<div class="empty"><strong>'+(isReady() ? 'No days yet' : 'Loading your days…')+'</strong>'+
+    el.innerHTML = linkBanner()+firstRun()+'<div class="empty"><strong>'+(isReady() ? 'No days yet' : 'Loading your days…')+'</strong>'+
       (isReady() ? '<p>Add a day, then fill it with rides, shows, meals and your resort. Each stop gets walking directions in your maps app.</p><div class="quick x-trip"><button class="btn btn-plain btn-small" data-act="newday">Add your first day</button></div>' : '')+'</div>'+settingsHtml();
     return;
   }
@@ -3884,6 +3886,11 @@ document.getElementById('app').addEventListener('click', function(ev){
     case 'loc': prefs.loc = b.dataset.v==='1'; savePrefs(); if(prefs.loc) geoStart(); else { geoStop(); geoErr = ''; } renderDay(); break;
     case 'dres': (function(){ var r = dtest(); r[b.dataset.k] = r[b.dataset.k]===b.dataset.v ? undefined : b.dataset.v; try{ localStorage.setItem('pdr.dtest', JSON.stringify(r)); }catch(e){} ui.dcopy = null; renderDay(); })(); break;
     case 'dcopy': ui.dcopy = dresText(); renderDay(); copyText(ui.dcopy, document.querySelector('.websec .codebox')); break;
+    case 'pastetrip':
+      (function(){
+        var fail = function(){ ui.settingsOpen = true; setStatus('Could not read the clipboard. Paste the code in Settings, Move this trip.'); renderDay(); var t = document.getElementById('tripIn'); if(t) t.scrollIntoView({block:'center'}); };
+        try{ navigator.clipboard.readText().then(function(t){ if(readTripCode(t)){ ui.pendingCode = t; ui.fromLink = true; ui.confirm = null; renderDay(); window.scrollTo(0,0); } else { setStatus('The clipboard has no trip code. Copy it again with Copy the trip code.'); } }, fail); }catch(e){ fail(); }
+      })(); break;
     case 'linkdismiss': ui.fromLink = false; ui.pendingCode = ''; renderDay(); break;
     case 'tripcode': ui.tripCodeShown = true; renderDay(); copyText(tripCode(), document.querySelector('textarea[aria-label="Trip code"]')); break;
     case 'tripload': (function(){
@@ -3891,6 +3898,7 @@ document.getElementById('app').addEventListener('click', function(ev){
       var d = codeDiff(j), n = d.days.length + (d.settings ? 1 : 0); if(!n) return;
       if(ui.confirm!=='tripload'){ armConfirm('tripload'); return; }
       ui.confirm = null; ui.pendingCode = ''; ui.fromLink = false; applyCode(j, d);
+      if(WEB_APP && standalone()) prefs.day = null;
       setStatus('Updated '+d.days.length+' day'+(d.days.length===1 ? '' : 's')+(d.settings ? ' and settings' : '')+'.');
     })(); break;
     case 'showdone': ui.showDone = true; renderDay(); break;
@@ -4569,6 +4577,7 @@ function moveSection(){
     (WEB_APP ? '' : '<div class="quick"><a class="btn btn-small" href="'+esc(WEB_URL+'#trip='+tripCodeNow())+'" target="_blank" rel="noopener">Open this trip in the web app</a></div><p class="note">Or copy the code and paste it there:</p>')+
     '<div class="quick"><button class="btn btn-plain btn-small" data-act="tripcode">'+(ui.tripCodeShown ? 'Copy the code again' : 'Copy the trip code')+'</button></div>'+
     (ui.tripCodeShown ? '<textarea class="field codebox" rows="3" aria-label="Trip code" spellcheck="false">'+esc(tripCode())+'</textarea>' : '');
+  if(WEB_APP && !standalone() && phoneOs()!=='other') h += '<p class="note">Added this to your Home Screen? That app keeps its own copy: copy the code here, open it from the Home Screen and tap Paste trip.</p>';
   if(isRO()) return h+'</div>';
   h += '<p class="note">'+(WEB_APP ? 'Bring in a trip code from the planner in Claude.' : 'Bring back changes from the web app. Only the days that differ are updated, and everyone you share the trip with sees them.')+'</p>'+
     '<textarea class="field codebox" id="tripIn" rows="3" placeholder="Paste a code that starts with PDR1:" aria-label="Trip code to load">'+esc(ui.pendingCode||'')+'</textarea>';
@@ -4589,6 +4598,15 @@ function codeReview(){
       '<div class="quick"><button class="btn btn-small" data-act="tripload">'+(ui.confirm==='tripload' ? 'Tap again to update '+n+' item'+(n===1 ? '' : 's') : 'Update '+n+' item'+(n===1 ? '' : 's'))+'</button></div>';
   }
   return h;
+}
+function standalone(){ try{ return navigator.standalone===true || window.matchMedia('(display-mode: standalone)').matches; }catch(e){ return false; } }
+/* An empty web app (a Home Screen app keeps its own copy, separate from the browser's) offers to load the trip from the
+   clipboard: copy the code in the planner or in the browser copy, then tap Paste trip here. */
+function firstRun(){
+  if(!WEB_APP || ui.fromLink || Object.keys(S.days||{}).length) return '';
+  return '<section class="linkin"><h3>Load your trip</h3><p class="note">'+(standalone() ? 'This Home Screen app keeps its own copy of the trip, separate from your browser. ' : '')+
+    'In the planner in Claude (or the web app in your browser), open Settings, then Move this trip, and tap Copy the trip code. Then come back here and tap Paste trip.</p>'+
+    '<div class="quick"><button class="btn btn-small" data-act="pastetrip">Paste trip</button></div></section>';
 }
 // The web app opened from the planner's link: the trip arrives in the address (after #, so it never leaves the phone).
 function linkBanner(){
