@@ -4470,7 +4470,8 @@ var DGUESS = (function(){
                'virtualqueues','boardinggroups','boardinggroup','joinqueue','waittimesmap','parkmaps','attractionwaittimes','attractionlist',
                'parkschedule','showtimes','entertainment','characterappearances','mobilefoodorder','orderahead','diningreservations',
                'checkin','resortcheckin','digitalkey','magicbandplus','linkedtickets','friendsandfamily','familyandfriends','guestservices','help'];
-  return paths.map(function(x){ return {k:'x3:mdx:'+x, url:'mdx://'+x}; });
+  // Round 3 (Oct 15): none of these 32 opened a screen, so the guessing is closed. Kept here as a record.
+  return paths.length && false ? paths.map(function(x){ return {k:'x3:mdx:'+x, url:'mdx://'+x}; }) : [];
 })();
 var DRES2 = {screen:'Opened that screen', home:'App home only', none:'Nothing / error'};
 function phoneOs(){ var ua = navigator.userAgent; return /Android/i.test(ua) ? 'android' : /iPhone|iPad|iPod/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1) ? 'ios' : 'other'; }
@@ -4503,11 +4504,11 @@ function webSettings(){
   }).join('');
   return '<div class="websec"><h4>This phone (web app test)</h4>'+loc+
     '<h4>Disney app</h4><p class="note">Rides, shows and meals have a button that opens My Disney Experience: meals open its Dining screen, timed stops and Lightning Lane rides open My Plans, and the rest open the app’s home screen (iPhone: tested Oct 2026). To check another phone, tap Try, see what happens, come back here and pick the result.</p><ul class="dlinks">'+rows+'</ul>'+
-    '<details class="dguess"'+(ui.dguess ? ' open' : '')+'><summary>More guesses: screens inside the app (testing only)</summary>'+
+    (DGUESS.length ? '<details class="dguess"'+(ui.dguess ? ' open' : '')+'><summary>More guesses: screens inside the app (testing only)</summary>'+
       '<p class="note">Round 3 of guesses at shortcuts to a particular screen in My Disney Experience (found so far: dining, myplans, tickets, photopass, memorymaker, parkhours). Trying them never changes the Disney app buttons.</p><ul class="dlinks">'+
       DGUESS.map(function(l){ return '<li><a class="btn btn-plain btn-small" href="'+esc(l.url)+'">Try</a> <code>'+esc(l.url)+'</code>'+
         '<div class="seg dres" role="group" aria-label="What happened">'+Object.keys(DRES2).map(function(k){ return '<button data-act="dres" data-k="'+esc(l.k)+'" data-v="'+k+'" aria-pressed="'+(r[l.k]===k)+'">'+DRES2[k]+'</button>'; }).join('')+'</div></li>'; }).join('')+
-      '</ul></details>'+
+      '</ul></details>' : '')+
     '<div class="quick"><button class="btn btn-plain btn-small" data-act="dcopy">Copy test results</button></div>'+
     (ui.dcopy ? '<textarea class="field codebox" readonly rows="4">'+esc(ui.dcopy)+'</textarea>' : '')+'</div>';
 }
