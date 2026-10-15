@@ -4463,9 +4463,12 @@ var DLINKS = [
 var DRES = {app:'Opened the app', web:'Opened a web page', none:'Nothing / error'};
 /* Guesses at screens inside the app, for testing only: their results are kept apart and never change the real buttons. */
 var DGUESS = (function(){
-  var paths = ['dining','mobileorder','mobile-order','order','lightninglane','lightning-lane','ll','tipboard','waittimes','wait-times','map','parkmap','plans','myplans',
-               'itinerary','tickets','virtualqueue','vq','photopass','magicbands','reservations','checkin','profile','home'];
-  return paths.map(function(x){ return {k:'x:mdx:'+x, url:'mdx://'+x}; }).concat(['dining','lightninglane','tipboard','map','plans'].map(function(x){ return {k:'x:wdw:'+x, url:'wdw://'+x}; }));
+  // Round 1 (Oct 14) found dining, myplans, tickets and photopass. Round 2 tries names in the same style.
+  var paths = ['mydining','myreservations','dining/mobileorder','dining/reservations','mobileordering','foodordering','food',
+               'mylightninglane','mylightninglanes','lightninglanes','genie','genieplus','mytickets','mymagicbands','magicband',
+               'myphotopass','photos','memorymaker','attractions','waittime','parks','parkhours','calendar','maps','mymap','directions',
+               'myresort','resort','roomkey','mykey','checkinonline','onlinecheckin','experiences','shows','characters','shop','mydisneyexperience'];
+  return paths.map(function(x){ return {k:'x2:mdx:'+x, url:'mdx://'+x}; });
 })();
 var DRES2 = {screen:'Opened that screen', home:'App home only', none:'Nothing / error'};
 function phoneOs(){ var ua = navigator.userAgent; return /Android/i.test(ua) ? 'android' : /iPhone|iPad|iPod/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1) ? 'ios' : 'other'; }
@@ -4479,6 +4482,12 @@ function dlinkBest(){
 function disneyBtn(x){
   if(!WEB_APP || x.done || !(x.t==='A' || x.t==='S' || x.t==='R')) return '';
   var u = dlinkBest(); if(!u) return '';
+  // Screens tested on an iPhone (Oct 2026): mdx://dining and wdw://dining open Dining, mdx://myplans opens My Plans
+  // (where Lightning Lane returns and reservations show). Other paths only open the app's home screen.
+  if(/^(mdx|wdw):\/\/$/.test(u)){
+    if(x.t==='R') return '<a class="icon" href="'+u+'dining">Dining in Disney app</a>';
+    if(u==='mdx://' && (x.ll || x.time)) return '<a class="icon" href="mdx://myplans">My Plans in Disney app</a>';
+  }
   return '<a class="icon" href="'+esc(u)+'">Disney app</a>';
 }
 function webSettings(){
@@ -4491,9 +4500,9 @@ function webSettings(){
       '<div class="seg dres" role="group" aria-label="What happened">'+Object.keys(DRES).map(function(k){ return '<button data-act="dres" data-k="'+l.k+'" data-v="'+k+'" aria-pressed="'+(r[l.k]===k)+'">'+DRES[k]+'</button>'; }).join('')+'</div></li>';
   }).join('');
   return '<div class="websec"><h4>This phone (web app test)</h4>'+loc+
-    '<h4>Disney app</h4><p class="note">Rides, shows and meals have a “Disney app” button that opens My Disney Experience (on an iPhone it uses mdx://, which worked in testing). It opens the app’s home screen: Disney offers no way to jump straight to a ride or a booking. To check another phone, tap Try, see what happens, come back here and pick the result.</p><ul class="dlinks">'+rows+'</ul>'+
+    '<h4>Disney app</h4><p class="note">Rides, shows and meals have a button that opens My Disney Experience: meals open its Dining screen, timed stops and Lightning Lane rides open My Plans, and the rest open the app’s home screen (iPhone: tested Oct 2026). To check another phone, tap Try, see what happens, come back here and pick the result.</p><ul class="dlinks">'+rows+'</ul>'+
     '<details class="dguess"'+(ui.dguess ? ' open' : '')+'><summary>More guesses: screens inside the app (testing only)</summary>'+
-      '<p class="note">These are guesses at shortcuts to a particular screen in My Disney Experience. Trying them never changes the Disney app buttons.</p><ul class="dlinks">'+
+      '<p class="note">Round 2 of guesses at shortcuts to a particular screen in My Disney Experience (round 1 found dining, myplans, tickets and photopass). Trying them never changes the Disney app buttons.</p><ul class="dlinks">'+
       DGUESS.map(function(l){ return '<li><a class="btn btn-plain btn-small" href="'+esc(l.url)+'">Try</a> <code>'+esc(l.url)+'</code>'+
         '<div class="seg dres" role="group" aria-label="What happened">'+Object.keys(DRES2).map(function(k){ return '<button data-act="dres" data-k="'+esc(l.k)+'" data-v="'+k+'" aria-pressed="'+(r[l.k]===k)+'">'+DRES2[k]+'</button>'; }).join('')+'</div></li>'; }).join('')+
       '</ul></details>'+
