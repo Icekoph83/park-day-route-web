@@ -4575,4 +4575,4 @@ applyPane(); render(); connect();
 window.__pdr = {resortPair:resortPair, RESORTS:RESORTS, RR_WALKS:RR_WALKS, RR_SKY:RR_SKY, RR_MONO:RR_MONO, RR_BOAT:RR_BOAT, resortSpot:resortSpot, SEAS:SEAS, SEAS_ALL:SEAS_ALL, PACES:PACES, DINE:DINE, dietMatch:dietMatch, typWait:typWait, typRange:typRange, CAL:CAL, HIST:HIST, closeMin:closeMin, holidaysNear:holidaysNear, eventsOn:eventsOn, dayFactor:dayFactor, leg:leg, sortByTime:sortByTime, PLACES:PLACES, S:S, isRO:isRO, autoOrder:autoOrder, displayed:displayed, pathCost:pathCost, simulate:simulate, INFO:INFO, setLive:function(pk, at, items){ var m = {}; items.forEach(function(x){ m[x.n] = x; }); live[pk] = {at:at, items:m}; liveStamp += at; render(); }};
 })();
 </script>
-<script>if("serviceWorker" in navigator) addEventListener("load", function(){ navigator.serviceWorker.register("sw.js").catch(function(){}); });</script></body></html>
+<script>if("serviceWorker" in navigator) addEventListener("load", function(){ navigator.serviceWorker.register("sw.js",{updateViaCache:"none"}).then(function(r){ r.update(); }).catch(function(){}); });</script></body></html>
