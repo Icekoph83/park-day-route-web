@@ -1797,6 +1797,7 @@ function liveBar(st){
   var waiting = Date.now() < refresh.until, h = '<div class="livebar"><span>'+esc(txt)+'</span>';
   if((S.owner && S.mode==='db') || WEB_APP) h += '<button class="btn btn-plain btn-small" data-act="refreshlive"'+(refresh.busy || waiting ? ' disabled' : '')+'>'+(refresh.busy || waiting ? 'Refreshing…' : 'Refresh now')+'</button>';
   if(refresh.msg) h += '<span class="livemsg" role="status">'+esc(refresh.msg)+'</span>';
+  if(WEB_APP && dlinkBest()==='mdx://') h += '<span>Disney app: <a href="mdx://parkhours">Park hours</a> · <a href="mdx://myplans">My Plans</a></span>';
   return h+'</div>';
 }
 function refreshLive(){
@@ -4463,12 +4464,13 @@ var DLINKS = [
 var DRES = {app:'Opened the app', web:'Opened a web page', none:'Nothing / error'};
 /* Guesses at screens inside the app, for testing only: their results are kept apart and never change the real buttons. */
 var DGUESS = (function(){
-  // Round 1 (Oct 14) found dining, myplans, tickets and photopass. Round 2 tries names in the same style.
-  var paths = ['mydining','myreservations','dining/mobileorder','dining/reservations','mobileordering','foodordering','food',
-               'mylightninglane','mylightninglanes','lightninglanes','genie','genieplus','mytickets','mymagicbands','magicband',
-               'myphotopass','photos','memorymaker','attractions','waittime','parks','parkhours','calendar','maps','mymap','directions',
-               'myresort','resort','roomkey','mykey','checkinonline','onlinecheckin','experiences','shows','characters','shop','mydisneyexperience'];
-  return paths.map(function(x){ return {k:'x2:mdx:'+x, url:'mdx://'+x}; });
+  // Found so far (iPhone, Oct 14): dining, myplans, tickets, photopass, memorymaker, parkhours. The app reads only the first word,
+  // so dining/anything opens Dining. Round 3 tries more single words in the same style, aimed at Lightning Lane, wait times and maps.
+  var paths = ['lightninglanepasses','lightninglanemultipass','multipass','singlepass','premierpass','llmp','llsp','reservelightninglane',
+               'virtualqueues','boardinggroups','boardinggroup','joinqueue','waittimesmap','parkmaps','attractionwaittimes','attractionlist',
+               'parkschedule','showtimes','entertainment','characterappearances','mobilefoodorder','orderahead','diningreservations',
+               'checkin','resortcheckin','digitalkey','magicbandplus','linkedtickets','friendsandfamily','familyandfriends','guestservices','help'];
+  return paths.map(function(x){ return {k:'x3:mdx:'+x, url:'mdx://'+x}; });
 })();
 var DRES2 = {screen:'Opened that screen', home:'App home only', none:'Nothing / error'};
 function phoneOs(){ var ua = navigator.userAgent; return /Android/i.test(ua) ? 'android' : /iPhone|iPad|iPod/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1) ? 'ios' : 'other'; }
@@ -4502,7 +4504,7 @@ function webSettings(){
   return '<div class="websec"><h4>This phone (web app test)</h4>'+loc+
     '<h4>Disney app</h4><p class="note">Rides, shows and meals have a button that opens My Disney Experience: meals open its Dining screen, timed stops and Lightning Lane rides open My Plans, and the rest open the app’s home screen (iPhone: tested Oct 2026). To check another phone, tap Try, see what happens, come back here and pick the result.</p><ul class="dlinks">'+rows+'</ul>'+
     '<details class="dguess"'+(ui.dguess ? ' open' : '')+'><summary>More guesses: screens inside the app (testing only)</summary>'+
-      '<p class="note">Round 2 of guesses at shortcuts to a particular screen in My Disney Experience (round 1 found dining, myplans, tickets and photopass). Trying them never changes the Disney app buttons.</p><ul class="dlinks">'+
+      '<p class="note">Round 3 of guesses at shortcuts to a particular screen in My Disney Experience (found so far: dining, myplans, tickets, photopass, memorymaker, parkhours). Trying them never changes the Disney app buttons.</p><ul class="dlinks">'+
       DGUESS.map(function(l){ return '<li><a class="btn btn-plain btn-small" href="'+esc(l.url)+'">Try</a> <code>'+esc(l.url)+'</code>'+
         '<div class="seg dres" role="group" aria-label="What happened">'+Object.keys(DRES2).map(function(k){ return '<button data-act="dres" data-k="'+esc(l.k)+'" data-v="'+k+'" aria-pressed="'+(r[l.k]===k)+'">'+DRES2[k]+'</button>'; }).join('')+'</div></li>'; }).join('')+
       '</ul></details>'+
