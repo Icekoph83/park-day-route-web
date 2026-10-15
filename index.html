@@ -3881,7 +3881,6 @@ document.getElementById('app').addEventListener('click', function(ev){
     case 'loc': prefs.loc = b.dataset.v==='1'; savePrefs(); if(prefs.loc) geoStart(); else { geoStop(); geoErr = ''; } renderDay(); break;
     case 'dres': (function(){ var r = dtest(); r[b.dataset.k] = r[b.dataset.k]===b.dataset.v ? undefined : b.dataset.v; try{ localStorage.setItem('pdr.dtest', JSON.stringify(r)); }catch(e){} ui.dcopy = null; renderDay(); })(); break;
     case 'dcopy': ui.dcopy = dresText(); renderDay(); copyText(ui.dcopy, document.querySelector('.websec .codebox')); break;
-    case 'openweb': b.href = WEB_URL+'#trip='+tripCode(); break;   // the link opens with the trip in its address; the default action follows
     case 'linkdismiss': ui.fromLink = false; ui.pendingCode = ''; renderDay(); break;
     case 'tripcode': ui.tripCodeShown = true; renderDay(); copyText(tripCode(), document.querySelector('textarea[aria-label="Trip code"]')); break;
     case 'tripload': (function(){
@@ -4497,6 +4496,10 @@ function tripCode(){
   var data = {v:1, from:WEB_APP ? 'web' : 'claude', at:Date.now(), days:S.days, settings:S.settings};
   return 'PDR1:'+btoa(unescape(encodeURIComponent(JSON.stringify(data))));
 }
+// The link carries the trip from the start: some apps open a link before the page's own tap handling runs, so the
+// address must already be complete. Rebuilt only when the trip changes.
+var tcMemo = {k:'', v:''};
+function tripCodeNow(){ var k = JSON.stringify([S.days, S.settings]); if(k!==tcMemo.k) tcMemo = {k:k, v:tripCode()}; return tcMemo.v; }
 function readTripCode(s){
   s = String(s||'').trim().replace(/\s+/g,''); if(s.indexOf('PDR1:')!==0) return null;
   try{ var j = JSON.parse(decodeURIComponent(escape(atob(s.slice(5))))); if(j && j.days && typeof j.days==='object' && j.settings) return j; }catch(e){}
@@ -4534,7 +4537,7 @@ function applyCode(j, d){
 function moveSection(){
   var h = '<div class="websec"><h4>Move this trip</h4>';
   h += '<p class="note">'+(WEB_APP ? 'To bring what you changed here back to the planner in Claude, copy this code and paste it there under Settings, Move this trip.' : 'To use this trip in the web app, copy this code and paste it there under Settings, Move this trip.')+'</p>'+
-    (WEB_APP ? '' : '<div class="quick"><a class="btn btn-small" href="'+WEB_URL+'" target="_blank" rel="noopener" data-act="openweb">Open this trip in the web app</a></div><p class="note">Or copy the code and paste it there:</p>')+
+    (WEB_APP ? '' : '<div class="quick"><a class="btn btn-small" href="'+esc(WEB_URL+'#trip='+tripCodeNow())+'" target="_blank" rel="noopener">Open this trip in the web app</a></div><p class="note">Or copy the code and paste it there:</p>')+
     '<div class="quick"><button class="btn btn-plain btn-small" data-act="tripcode">'+(ui.tripCodeShown ? 'Copy the code again' : 'Copy the trip code')+'</button></div>'+
     (ui.tripCodeShown ? '<textarea class="field codebox" rows="3" aria-label="Trip code" spellcheck="false">'+esc(tripCode())+'</textarea>' : '');
   if(isRO()) return h+'</div>';
