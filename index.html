@@ -305,6 +305,8 @@ details.stay[open] > .stayhead .staynm::before{content:'− '}
 .dlinks{list-style:none;padding:0;margin:0;display:flex;flex-direction:column;gap:10px}
 .dlinks .dres{margin-top:4px;flex-wrap:wrap}
 .dlinks .dres button{font-size:.78rem}
+.linkin{border:2px solid #2f6fde;border-radius:12px;padding:10px 12px;margin:8px 0}
+.linkin h3{margin:0 0 4px}
 .codediff{margin:4px 0;padding-left:18px;font-size:.88rem}
 .codebox{width:100%;box-sizing:border-box;font:12px ui-monospace,monospace;word-break:break-all}
 .livebar{display:flex;flex-wrap:wrap;gap:6px 12px;align-items:center;font-size:.88rem;color:var(--muted)}
@@ -911,6 +913,11 @@ function goLocal(){
   if(!S.wasWriter || WEB_APP) S.scope = 'own';
   activate(); render();
   if(WEB_APP){ webLiveStart(); if(prefs.loc) geoStart(); }
+  if(WEB_APP && /^#trip=/.test(location.hash)){
+    ui.pendingCode = decodeURIComponent(location.hash.slice(6)); ui.fromLink = true;
+    try{ history.replaceState(null, '', location.pathname + location.search); }catch(e){}
+    render(); window.scrollTo(0, 0);
+  }
 }
 async function setup(db){
   S.db = db; S.mode = 'db';
@@ -3321,7 +3328,7 @@ function renderDay(){
   if(editingTime()){ ui.deferDay = true; return; }
   ui.deferDay = false;
   if(!id){
-    el.innerHTML = '<div class="empty"><strong>'+(isReady() ? 'No days yet' : 'Loading your days…')+'</strong>'+
+    el.innerHTML = linkBanner()+'<div class="empty"><strong>'+(isReady() ? 'No days yet' : 'Loading your days…')+'</strong>'+
       (isReady() ? '<p>Add a day, then fill it with rides, shows, meals and your resort. Each stop gets walking directions in your maps app.</p><div class="quick x-trip"><button class="btn btn-plain btn-small" data-act="newday">Add your first day</button></div>' : '')+'</div>'+settingsHtml();
     return;
   }
@@ -3337,6 +3344,7 @@ function renderDay(){
     (n ? done+' of '+n+' done'+(walkLeft ? ' · about '+walkLeft+' min of walking left' : '') : 'No stops yet')+'</p></div>';
   if(n) h += '<div class="viewbar"><div class="seg" role="group" aria-label="View"><button data-act="view" data-v="park" aria-pressed="'+park+'">In the park</button><button data-act="view" data-v="plan" aria-pressed="'+(!park)+'">Planning</button></div>'+
     (park ? '' : '<button class="btn btn-plain btn-small" data-act="cardsall" aria-pressed="'+(!!prefs.cardsOpen)+'">'+(prefs.cardsOpen ? 'Compact cards' : 'Show all details')+'</button>')+'</div>';
+  h += linkBanner();
   if(n) h += hereBar(id, st, nextI);
 
   if(n > 1 && !park){
@@ -3858,7 +3866,7 @@ document.getElementById('app').addEventListener('click', function(ev){
   var act = b.dataset.act, id = curDayId(), day = id ? S.days[id] : null, i, p;
   // Someone following a shared trip can always look around, and can arrange and tick off stops once they use their own order.
   var mine = usingMine(id), o = mine ? mineAll[mineKey(id)] : null, cur;
-  if(isRO() && !{pane:1,day:1,zone:1,type:1,maps:1,gomode:1,scope:1,order:1,dfilter:1,wlz:1,wlonly:1,skstay:1,rrfind:1,rrcomp:1,rfilter:1,refreshlive:1,dietopen:1,diet:1,fav:1,got:1,foodstar:1,dropevery:1,dropgone:1,calzip:1,pfav:1,chpick:1,chask:1,favonly:1,tfollow:1,view:1,cardsall:1,sopen:1,showmap:1,showdone:1,tonext:1,undo:1}[act] && !(mine && {done:1,toggle:1,up:1,down:1,reset:1,optimize:1,meal:1,mealdur:1,mealclose:1,mealforce:1,hop:1,fillkind:1,add:1,addname:1,add2:1,quickadd:1,mealadd:1,rradd:1,rm:1,cleartime:1,sort:1,calzip:1,rainswap:1,wayadd:1}[act])) return;
+  if(isRO() && !{openweb:1,tripcode:1,linkdismiss:1,pane:1,day:1,zone:1,type:1,maps:1,gomode:1,scope:1,order:1,dfilter:1,wlz:1,wlonly:1,skstay:1,rrfind:1,rrcomp:1,rfilter:1,refreshlive:1,dietopen:1,diet:1,fav:1,got:1,foodstar:1,dropevery:1,dropgone:1,calzip:1,pfav:1,chpick:1,chask:1,favonly:1,tfollow:1,view:1,cardsall:1,sopen:1,showmap:1,showdone:1,tonext:1,undo:1}[act] && !(mine && {done:1,toggle:1,up:1,down:1,reset:1,optimize:1,meal:1,mealdur:1,mealclose:1,mealforce:1,hop:1,fillkind:1,add:1,addname:1,add2:1,quickadd:1,mealadd:1,rradd:1,rm:1,cleartime:1,sort:1,calzip:1,rainswap:1,wayadd:1}[act])) return;
   if(mine && day && {add:1,addname:1,add2:1,quickadd:1,mealadd:1,rradd:1,rm:1,cleartime:1,sort:1,rainswap:1,wayadd:1}[act]){
     if(act==='cleartime' && !isOwnStop(id, {id:b.dataset.id})) return;
     day = mineProxy = {stops: displayed(id).map(function(s){ return Object.assign({}, s); }), mode:'custom', __mine:id};
@@ -3873,12 +3881,14 @@ document.getElementById('app').addEventListener('click', function(ev){
     case 'loc': prefs.loc = b.dataset.v==='1'; savePrefs(); if(prefs.loc) geoStart(); else { geoStop(); geoErr = ''; } renderDay(); break;
     case 'dres': (function(){ var r = dtest(); r[b.dataset.k] = r[b.dataset.k]===b.dataset.v ? undefined : b.dataset.v; try{ localStorage.setItem('pdr.dtest', JSON.stringify(r)); }catch(e){} ui.dcopy = null; renderDay(); })(); break;
     case 'dcopy': ui.dcopy = dresText(); renderDay(); copyText(ui.dcopy, document.querySelector('.websec .codebox')); break;
+    case 'openweb': b.href = WEB_URL+'#trip='+tripCode(); break;   // the link opens with the trip in its address; the default action follows
+    case 'linkdismiss': ui.fromLink = false; ui.pendingCode = ''; renderDay(); break;
     case 'tripcode': ui.tripCodeShown = true; renderDay(); copyText(tripCode(), document.querySelector('textarea[aria-label="Trip code"]')); break;
     case 'tripload': (function(){
       var j = readTripCode(ui.pendingCode); if(!j) return;
       var d = codeDiff(j), n = d.days.length + (d.settings ? 1 : 0); if(!n) return;
       if(ui.confirm!=='tripload'){ armConfirm('tripload'); return; }
-      ui.confirm = null; applyCode(j, d); ui.pendingCode = '';
+      ui.confirm = null; ui.pendingCode = ''; ui.fromLink = false; applyCode(j, d);
       setStatus('Updated '+d.days.length+' day'+(d.days.length===1 ? '' : 's')+(d.settings ? ' and settings' : '')+'.');
     })(); break;
     case 'showdone': ui.showDone = true; renderDay(); break;
@@ -4524,12 +4534,19 @@ function applyCode(j, d){
 function moveSection(){
   var h = '<div class="websec"><h4>Move this trip</h4>';
   h += '<p class="note">'+(WEB_APP ? 'To bring what you changed here back to the planner in Claude, copy this code and paste it there under Settings, Move this trip.' : 'To use this trip in the web app, copy this code and paste it there under Settings, Move this trip.')+'</p>'+
+    (WEB_APP ? '' : '<div class="quick"><a class="btn btn-small" href="'+WEB_URL+'" target="_blank" rel="noopener" data-act="openweb">Open this trip in the web app</a></div><p class="note">Or copy the code and paste it there:</p>')+
     '<div class="quick"><button class="btn btn-plain btn-small" data-act="tripcode">'+(ui.tripCodeShown ? 'Copy the code again' : 'Copy the trip code')+'</button></div>'+
-    (ui.tripCodeShown ? '<textarea class="field codebox" readonly rows="3" aria-label="Trip code">'+esc(tripCode())+'</textarea>' : '');
+    (ui.tripCodeShown ? '<textarea class="field codebox" rows="3" aria-label="Trip code" spellcheck="false">'+esc(tripCode())+'</textarea>' : '');
   if(isRO()) return h+'</div>';
   h += '<p class="note">'+(WEB_APP ? 'Bring in a trip code from the planner in Claude.' : 'Bring back changes from the web app. Only the days that differ are updated, and everyone you share the trip with sees them.')+'</p>'+
     '<textarea class="field codebox" id="tripIn" rows="3" placeholder="Paste a code that starts with PDR1:" aria-label="Trip code to load">'+esc(ui.pendingCode||'')+'</textarea>';
-  var j = ui.pendingCode ? readTripCode(ui.pendingCode) : null;
+  if(!ui.fromLink) h += codeReview();
+  return h+'</div>';
+}
+var WEB_URL = 'https://icekoph83.github.io/park-day-route-web/';
+// What the pasted (or linked) code would change, with the button that applies it.
+function codeReview(){
+  var h = '', j = ui.pendingCode ? readTripCode(ui.pendingCode) : null;
   if(ui.pendingCode && !j) h += '<p class="note warn">That is not a trip code. Copy it again with Copy the trip code.</p>';
   if(j){
     var d = codeDiff(j), n = d.days.length + (d.settings ? 1 : 0);
@@ -4539,7 +4556,12 @@ function moveSection(){
       '<p class="note">These days are replaced with the code’s version, including any changes made to them here since the code was copied.</p>'+
       '<div class="quick"><button class="btn btn-small" data-act="tripload">'+(ui.confirm==='tripload' ? 'Tap again to update '+n+' item'+(n===1 ? '' : 's') : 'Update '+n+' item'+(n===1 ? '' : 's'))+'</button></div>';
   }
-  return h+'</div>';
+  return h;
+}
+// The web app opened from the planner's link: the trip arrives in the address (after #, so it never leaves the phone).
+function linkBanner(){
+  if(!WEB_APP || !ui.fromLink || !ui.pendingCode) return '';
+  return '<section class="linkin"><h3>Trip from the planner</h3>'+codeReview()+'<div class="quick"><button class="btn btn-plain btn-small" data-act="linkdismiss">Not now</button></div></section>';
 }
 document.addEventListener('input', function(ev){ if(ev.target && ev.target.id==='tripIn'){ var had = !!readTripCode(ui.pendingCode); ui.pendingCode = ev.target.value; if(had || readTripCode(ui.pendingCode)){ ui.confirm = null; renderDay(); var t = document.getElementById('tripIn'); if(t){ t.focus(); t.setSelectionRange(t.value.length, t.value.length); } } } });
 function copyText(text, ta){
