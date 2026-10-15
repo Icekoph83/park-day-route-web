@@ -4463,7 +4463,9 @@ function phoneOs(){ var ua = navigator.userAgent; return /Android/i.test(ua) ? '
 function dtest(){ try{ return JSON.parse(localStorage.getItem('pdr.dtest')||'{}') || {}; }catch(e){ return {}; } }
 function dlinkBest(){
   var r = dtest(), hit = DLINKS.filter(function(l){ return r[l.k]==='app' && l.k!=='store' && l.k!=='play'; })[0];
-  return hit ? hit.url : null;
+  if(hit) return hit.url;
+  // Tested on an iPhone (Oct 2026): mdx:// and wdw:// open My Disney Experience; Android opens it by package name.
+  var os = phoneOs(); return os==='ios' ? 'mdx://' : os==='android' ? 'intent://#Intent;package=com.disney.wdw.android;end' : null;
 }
 function disneyBtn(x){
   if(!WEB_APP || x.done || !(x.t==='A' || x.t==='S' || x.t==='R')) return '';
@@ -4480,7 +4482,7 @@ function webSettings(){
       '<div class="seg dres" role="group" aria-label="What happened">'+Object.keys(DRES).map(function(k){ return '<button data-act="dres" data-k="'+l.k+'" data-v="'+k+'" aria-pressed="'+(r[l.k]===k)+'">'+DRES[k]+'</button>'; }).join('')+'</div></li>';
   }).join('');
   return '<div class="websec"><h4>This phone (web app test)</h4>'+loc+
-    '<h4>Disney app</h4><p class="note">Tap Try, see what happens, come back here and pick the result. Once one opens the app, rides, shows and meals get a “Disney app” button.</p><ul class="dlinks">'+rows+'</ul>'+
+    '<h4>Disney app</h4><p class="note">Rides, shows and meals have a “Disney app” button that opens My Disney Experience (on an iPhone it uses mdx://, which worked in testing). It opens the app’s home screen: Disney offers no way to jump straight to a ride or a booking. To check another phone, tap Try, see what happens, come back here and pick the result.</p><ul class="dlinks">'+rows+'</ul>'+
     '<div class="quick"><button class="btn btn-plain btn-small" data-act="dcopy">Copy test results</button></div>'+
     (ui.dcopy ? '<textarea class="field codebox" readonly rows="4">'+esc(ui.dcopy)+'</textarea>' : '')+'</div>';
 }
