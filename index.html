@@ -1234,11 +1234,12 @@ function rrParkAt(pos){
   return best ? best.z : null;
 }
 function rrBar(st, nextI){
-  var r = ui.rr, baby = !!prefs.rrBaby, comp = !baby && !!prefs.rrComp;
-  var h = '<section class="rrbar"><div class="rrrow"><button class="btn btn-plain btn-small" data-act="rrfind">'+(baby ? '🍼 Nearest Baby Care' : '🚻 Nearest restroom')+'</button>'+
-    '<div class="seg rrseg" role="group" aria-label="What to find"><button data-act="rrcomp" data-v="0" aria-pressed="'+(!comp && !baby)+'">Any</button><button data-act="rrcomp" data-v="1" aria-pressed="'+comp+'">Companion</button><button data-act="rrcomp" data-v="2" aria-pressed="'+baby+'">Baby care</button></div></div>';
+  var r = ui.rr, water = !!prefs.rrWater, baby = !water && !!prefs.rrBaby, comp = !baby && !water && !!prefs.rrComp;
+  var h = '<section class="rrbar"><div class="rrrow"><button class="btn btn-plain btn-small" data-act="rrfind">'+(water ? '💧 Nearest water' : baby ? '🍼 Nearest Baby Care' : '🚻 Nearest restroom')+'</button>'+
+    '<div class="seg rrseg" role="group" aria-label="What to find"><button data-act="rrcomp" data-v="0" aria-pressed="'+(!comp && !baby && !water)+'">Any</button><button data-act="rrcomp" data-v="1" aria-pressed="'+comp+'">Companion</button><button data-act="rrcomp" data-v="2" aria-pressed="'+baby+'">Baby care</button><button data-act="rrcomp" data-v="3" aria-pressed="'+water+'">Water</button></div></div>';
   if(r && r.busy) h += '<p class="note">Finding where you are…</p>';
   else if(r && r.err) h += '<p class="note">'+esc(r.err)+'</p>';
+  else if(r && r.ref && water) h += waterResult(r.ref);
   else if(r && r.ref){
     var pick = rrPick(r.ref, r.ref.z, comp, baby), any = comp ? rrPick(r.ref, r.ref.z, false) : null;
     if(pick){
@@ -1249,6 +1250,18 @@ function rrBar(st, nextI){
     } else h += '<p class="note">'+(baby ? 'There is no Baby Care Center here (only the four theme parks have one); most restrooms have changing stations.' : 'No restroom found nearby in the list.')+'</p>';
   }
   return h+'</section>';
+}
+/* Water. Disney's parks have water fountains and bottle-filling stations, nearly always beside restrooms, and any
+   quick-service counter or snack stand gives a free cup of ice water. So: the nearest restroom and the nearest counter. */
+function waterResult(ref){
+  var rr = rrPick(ref, ref.z, false), qs = null, mn = function(d){ return Math.max(1, Math.round(d*1.3/pace()[1])); };
+  (PLACES[ref.z]||[]).forEach(function(p){ if(p.t!=='R' || p.lat==null) return; var d = DINE[p.z+'|'+p.name]; if(!d || !/[qs]/.test(d.svc)) return;
+    var m = hav(ref, p); if(!qs || m < qs.d) qs = {p:p, d:m}; });
+  if(!rr && !qs) return '<p class="note">No restrooms or quick-service spots are listed here.</p>';
+  return (rr ? '<p class="rrres"><strong>Fountains and bottle fillers:</strong> '+esc(rr.p.name.replace(/^Restrooms:? /,''))+' restrooms · about '+rr.min+' min walk</p>' : '')+
+    (qs ? '<p class="rrres"><strong>Free ice water:</strong> '+esc(qs.p.name)+' · about '+mn(qs.d)+' min walk</p>' : '')+
+    '<p class="note">'+(ref.gps ? 'From your phone’s location' : 'From '+esc(ref.label)+', where your plan has you')+'. Fountains and bottle fillers are nearly always next to restrooms, and any quick-service counter or snack stand will give you a free cup of ice water.</p>'+
+    '<div class="actions">'+(rr ? link(dirUrl(rr.p,'w'),'btn btn-go','Walk to the fountains') : '')+(qs ? link(dirUrl(qs.p,'w'),'btn btn-alt','Walk to '+qs.p.name) : '')+'</div>';
 }
 function nearestRestroom(s){
   if(!PARKS[s.z] || s.lat==null || s.t==='W' || !PLACES[s.z]) return null;
@@ -4170,7 +4183,7 @@ document.getElementById('app').addEventListener('click', function(ev){
     case 'got': toggleFood('got', b.dataset.k); break;
     case 'foodstar': ui.foodStar = b.dataset.v==='1'; renderDay(); break;
     case 'skstay': ui.skStay = !ui.skStay; renderDay(); break;
-    case 'rrcomp': prefs.rrComp = b.dataset.v==='1'; prefs.rrBaby = b.dataset.v==='2'; savePrefs(); renderDay(); break;
+    case 'rrcomp': prefs.rrComp = b.dataset.v==='1'; prefs.rrBaby = b.dataset.v==='2'; prefs.rrWater = b.dataset.v==='3'; savePrefs(); renderDay(); break;
     case 'rrfind':
       (function(){
         var did = curDayId(), dst = did ? displayed(did) : [], ni = -1; dst.some(function(x, k){ if(!x.done){ ni = k; return true; } return false; });
