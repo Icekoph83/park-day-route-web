@@ -887,6 +887,7 @@ function normStays(o){
   var okDay = function(d){ return typeof d==='string' && /^\d{4}-\d{2}-\d{2}$/.test(d); }, str = function(x){ return typeof x==='string' && x.length>0 && x.length<300; };
   var L = Array.isArray(o.stays) ? o.stays.filter(function(x){ return x && typeof x==='object'; }).slice(0,8).map(function(x){
     var n = {r: str(x.r) ? x.r : ''}; if(okDay(x.a)) n.a = x.a; if(okDay(x.o)) n.o = x.o; if(n.a && str(x.as)) n.as = x.as; if(n.o && str(x.os)) n.os = x.os;
+    if(!x.off && str(x.bld)) n.bld = x.bld.slice(0,12);
     if(x.off){ n.off = 1; if(str(x.addr)) n.addr = x.addr.slice(0,120); if(x.ee) n.ee = 1; if(x.l7) n.l7 = 1; }
     if(x.by==='d' || x.by==='r' || (x.by==='s' && n.off)) n.by = x.by;
     if(typeof x.drive==='number' && x.drive>=5 && x.drive<=120) n.drive = Math.round(x.drive);
@@ -1174,6 +1175,10 @@ function breakStay(id, st, a){
 }
 function stayDates(y){ return (y.a ? 'check-in '+medDay(y.a) : '')+(y.a && y.o ? ', ' : '')+(y.o ? 'check-out '+medDay(y.o) : ''); }
 function stayRow(x, id, ro){
+  var y0 = x.t==='H' ? stayByName(x.name) : null, cl = y0 ? cbrLine(y0) : '';
+  return (cl ? '<div class="ctl ctl3"><span class="llnote">'+esc(cl)+'</span></div>' : '') + stayRow0(x, id, ro);
+}
+function stayRow0(x, id, ro){
   var y = stayOfStop(x, id); if(!y || (x.dur && y.a!==id && y.o!==id)) return '';
   var inOn = y.a===id && y.as===x.id, outOn = y.o===id && y.os===x.id;
   if(ro) return (inOn || outOn) ? '<div class="ctl ctl3"><span class="llnote">'+(inOn ? 'Check-in' : 'Check-out: last stop at the resort')+'</span></div>' : '';
@@ -1327,7 +1332,8 @@ function dirUrl(s, mode, from){
 // Where a hotel stop is, as a maps app should read it: the address for a home, rental or other hotel, else the resort's name.
 function stayFrom(h){
   if(!h || h.t!=='H') return '';
-  var y = stayByName(h.name), pl = y ? stayPlace(y) : null;
+  var y = stayByName(h.name), pl = y ? stayPlace(y) : null, cb = cbrInfo(y);
+  if(cb) return cb.b.lat+','+cb.b.lng;   // your building at Caribbean Beach
   return pl ? pl.q : (h.q || h.name+', Walt Disney World, FL');
 }
 // How you are getting to a stop that is not a short walk: your choice, remembered on this device; at first, driving
@@ -3337,7 +3343,7 @@ function nextDateGuess(){
 // The redraw is held until they leave the field.
 // Tracked from focus events, not document.activeElement: the browser reports no focused element for a moment
 // while it hops between the hour, minute and AM/PM parts of a time field.
-var TEXTACT = {stayname:1, stayaddr:1, parknote:1, dropt:1, tend:1, qsearch:1};
+var TEXTACT = {staybld:1, stayname:1, stayaddr:1, parknote:1, dropt:1, tend:1, qsearch:1};
 function editingTime(){ return !!(ui.timeEl && ui.timeEl.isConnected); }
 function renderDay(){
   var el = document.getElementById('paneDay'), id = curDayId();
@@ -3606,6 +3612,8 @@ function staySettings(){
       (y.r ? row('bySel'+sfx, 'Getting to the parks', '<select class="field" id="bySel'+sfx+'" data-act="stayby" data-i="'+i+'" aria-labelledby="lblbySel'+sfx+'">'+bys+'</select>')+
              (m ? row('driveSel'+sfx, m==='s' ? 'Shuttle ride' : 'Drive each way', '<select class="field" id="driveSel'+sfx+'" data-act="staydrive" data-i="'+i+'" aria-labelledby="lbldriveSel'+sfx+'">'+mins+'</select>') : '')+
              days(i, 'a', 'inSel'+sfx, 'Check-in day', y.a||'')+days(i, 'o', 'outSel'+sfx, 'Check-out day', y.o||'') : '')+
+      (y.r===CBR && !y.off ? row('bld'+sfx, 'Your building or room', txt('bld'+sfx, 'staybld', y.bld, 'For example 32 or 3201', 12))+
+        '<p class="note">'+(cbrLine(y) ? esc(cbrLine(y))+' Days that start here begin at your building.' : 'Optional: with your building number, directions start at your building and show the nearest bus stop and the walk to the Skyliner.')+'</p>' : '')+
       (many ? '<div class="quick"><button class="btn btn-plain btn-small" data-act="stayrm" data-i="'+i+'" aria-label="Remove stay '+(i+1)+'">Remove this stay</button></div>' : '')+'</div></details>';
   }).join('');
   if(L.some(function(y){ return y.r && !y.off; })) h += '<p class="note x-trip">A Disney resort stay includes early park entry ('+EE_MIN+' min before opening, every park, every day) and Lightning Lane booking from 7 days before check-in.</p>';
@@ -3906,7 +3914,7 @@ document.getElementById('app').addEventListener('click', function(ev){
     case 'raadd':
       (function(){
         if(!day) return; var r = b.dataset.r, a = raFor(r).filter(function(x){ return x.n===b.dataset.n; })[0]; if(!a) return;
-        var spot = resortSpot(r), from = b.dataset.from==='' ? null : +b.dataset.from, to = b.dataset.to==='' ? null : +b.dataset.to;
+        var spot = raSpot(r, b.dataset.note+' '+a.where, a.n), from = b.dataset.from==='' ? null : +b.dataset.from, to = b.dataset.to==='' ? null : +b.dataset.to;
         var s = makeStop({z:'RD', t:'E', name:raStopName(a, r), at:r, lat:spot ? spot.lat : null, lng:spot ? spot.lng : null, q:r+', Walt Disney World, FL',
           note:[b.dataset.note, a.where, a.paid && a.cost ? a.cost : ''].filter(Boolean).join(' · ').slice(0, 140)});
         if(from!=null){ s.time = pad(Math.floor(from/60))+':'+pad(from%60); s.dur = to!=null ? Math.max(15, Math.min(150, to-from)) : (/movie/i.test(a.n) ? 100 : 30); }
@@ -4305,7 +4313,7 @@ document.getElementById('app').addEventListener('change', function(ev){
     }
   }
   else if(t.dataset.act==='parknote' && day){ var pv = (t.value||'').trim().slice(0,40); if((day.park||'')!==pv){ if(pv) day.park = pv; else delete day.park; commit(id); } }
-  else if(/^stay(r|a|o|name|addr|by|drive|ee|l7)$/.test(t.dataset.act||'')){
+  else if(/^stay(r|a|o|name|addr|by|drive|ee|l7|bld)$/.test(t.dataset.act||'')){
     var SL = S.settings.stays, si = +t.dataset.i || 0, k = t.dataset.act.slice(4), touched = [];
     while(SL.length <= si) SL.push({r:''});
     var sy = SL[si];
@@ -4318,6 +4326,7 @@ document.getElementById('app').addEventListener('change', function(ev){
     }
     else if(k==='name'){ var old = sy.r, nv = (t.value||'').replace(/\s+/g,' ').trim().slice(0,60); if(nv===old) return; sy.r = nv; if(nv) restop(old); else { delete sy.as; delete sy.os; }
       if(nv && !old){ if(EE_RE.test(nv)) sy.ee = 1; if(L7_RE.test(nv)) sy.l7 = 1; } }
+    else if(k==='bld'){ var bv = (t.value||'').replace(/\s+/g,' ').trim().slice(0,12); if(bv===(sy.bld||'')) return; if(bv) sy.bld = bv; else delete sy.bld; }
     else if(k==='ee' || k==='l7'){ if(t.value && sy.off) sy[k] = 1; else delete sy[k]; }
     else if(k==='addr'){ var av = (t.value||'').replace(/\s+/g,' ').trim().slice(0,120); if(av===(sy.addr||'')) return; if(av) sy.addr = av; else delete sy.addr; restop(sy.r); }
     else if(k==='by'){ if(BYS[t.value] && (t.value!=='s' || sy.off)) sy.by = t.value; else if(!sy.off) delete sy.by; }
@@ -4652,6 +4661,58 @@ function copyText(text, ta){
   if(!ok) setStatus('Select the code and copy it.');
 }
 
+/* ---------- Caribbean Beach, from the resort's paper map (Disney, 07/2025) ----------
+   Which village each building is in, the bus stops, the Skyliner station and the main spots, placed by matching the map
+   to known locations (Skyliner stations, Centertown Market, Sebastian's Bistro, Calypso Trading Post): about ±30 m. */
+var CBR = "Disney's Caribbean Beach Resort";
+var CBR_MAP = {
+  bld:{56:[28.36473,-81.54544],55:[28.3644,-81.54467],54:[28.36387,-81.54546],52:[28.3632,-81.54464],53:[28.36295,-81.54548],51:[28.36235,-81.54472],
+       45:[28.36172,-81.54465],46:[28.36132,-81.5454],44:[28.36114,-81.54485],43:[28.36061,-81.54442],42:[28.36046,-81.5435],41:[28.35993,-81.54406],
+       24:[28.36417,-81.54025],25:[28.36385,-81.54081],26:[28.36336,-81.54064],31:[28.36118,-81.54204],32:[28.36034,-81.54202],33:[28.35984,-81.54167],
+       34:[28.35843,-81.54245],35:[28.35797,-81.54305],36:[28.35773,-81.54226],37:[28.35672,-81.54259],38:[28.35622,-81.54307],39:[28.35563,-81.54262]},
+  village:function(n){ return n>=51 ? 'Aruba' : n>=41 ? 'Jamaica' : n>=34 ? 'Trinidad' : n>=31 ? 'Barbados' : 'Martinique'; },
+  bus:[{n:'Aruba',lat:28.36464,lng:-81.54615},{n:'Jamaica',lat:28.3607,lng:-81.54621},{n:'Resort entrance (by the Skyliner)',lat:28.3594,lng:-81.54527},{n:'Old Port Royale',lat:28.36194,lng:-81.5413},
+       {n:'Barbados',lat:28.36052,lng:-81.54104},{n:'Martinique',lat:28.36427,lng:-81.53914},{n:'Trinidad',lat:28.35745,lng:-81.54222}],
+  spot:{campfire:{n:'Campfire (Martinique Beach)',lat:28.3634,lng:-81.54144}, cay:{n:'Caribbean Cay (playground, movie lawn)',lat:28.36214,lng:-81.54349},
+        pool:{n:'Fuentes del Morro Pool',lat:28.36232,lng:-81.54249}, marina:{n:'Barefoot Bay Marina',lat:28.3633,lng:-81.54246},
+        lobby:{n:'Old Port Royale (lobby, Centertown Market, Sebastian’s)',lat:28.36254,lng:-81.54213}, spyglass:{n:'Spyglass Grill',lat:28.35729,lng:-81.543},
+        sky:{n:'Caribbean Beach Skyliner station',lat:28.35915,lng:-81.54496}}
+};
+/* Walking at Caribbean Beach goes around Barefoot Bay: Aruba, Jamaica and the Skyliner station are on the west shore;
+   Old Port Royale, Martinique, Barbados and Trinidad on the east. You cross by the bridge near the resort entrance or
+   over Caribbean Cay. Minutes at the trip's walking pace. */
+var CBR_X = {sw:{lat:28.35948,lng:-81.54394}, se:{lat:28.35933,lng:-81.54309}, cw:{lat:28.36196,lng:-81.54414}, ce:{lat:28.36229,lng:-81.54293}};
+function cbrSide(p){ if(p===CBR_MAP.spot.cay) return 'i'; return p.lng < -81.5433 ? 'w' : 'e'; }
+function cbrMin(a, b){
+  var sa = cbrSide(a), sb = cbrSide(b), X = CBR_X, d;
+  var via = function(pts){ var t = 0, prev = a; pts.concat([b]).forEach(function(q){ t += hav(prev, q); prev = q; }); return t; };
+  if(sa===sb) d = hav(a, b)*1.25;
+  else if(sa==='i' || sb==='i'){ var o = sa==='i' ? sb : sa; d = (sa==='i' ? via([o==='w' ? X.cw : X.ce]) : via([o==='w' ? X.cw : X.ce]))*1.1; }
+  else { var w2e = sa==='w'; d = Math.min(via(w2e ? [X.sw, X.se] : [X.se, X.sw]), via(w2e ? [X.cw, X.ce] : [X.ce, X.cw]))*1.1; }
+  return Math.max(1, Math.round(d/pace()[1]));
+}
+// "3201", "32", "Bldg 32 room 3201" -> {n:32, lat, lng, village}
+function cbrBld(v){ var m = String(v||'').match(/\d+/); if(!m) return null; var t = m[0], n = +(t.length>=3 ? t.slice(0,2) : t); var c = CBR_MAP.bld[n]; return c ? {n:n, lat:c[0], lng:c[1], village:CBR_MAP.village(n)} : null; }
+function cbrStay(){ var L = (typeof stayList==='function' ? stayList() : []).filter(function(y){ return y.r===CBR && !y.off && y.bld; }); return L.length ? L[0] : null; }
+function cbrInfo(y){
+  var b = y && y.r===CBR ? cbrBld(y.bld) : null; if(!b) return null;
+  var bus = null, bm = 1e9; CBR_MAP.bus.forEach(function(s){ var m = cbrMin(b, s); if(m < bm){ bm = m; bus = s; } });
+  return {b:b, bus:bus, busMin:bm, skyMin:cbrMin(b, CBR_MAP.spot.sky), lobbyMin:cbrMin(b, CBR_MAP.spot.lobby)};
+}
+function cbrLine(y){
+  var i = cbrInfo(y); if(!i) return '';
+  return 'Building '+i.b.n+' ('+i.b.village+'): nearest bus stop '+i.bus.n+', about '+i.busMin+' min walk · Skyliner station about '+i.skyMin+' min · Old Port Royale (lobby and food) about '+i.lobbyMin+' min.';
+}
+// Where an activity happens at Caribbean Beach, from its listed location.
+function raSpot(resort, where, name){
+  if(resort===CBR){
+    var w = (where||'')+' '+(name||''), S2 = CBR_MAP.spot;
+    var hit = /Martinique Beach|Campfire/i.test(w) ? S2.campfire : /Caribbean Cay|Movie|Island Party|Playground/i.test(w) ? S2.cay : /Marina|Fishing/i.test(w) ? S2.marina
+            : /Fuentes|Pool Deck|Poolside|Glow/i.test(w) ? S2.pool : /Pineapple Fountain|Old Port Royale/i.test(w) ? S2.lobby : null;
+    if(hit) return hit;
+  }
+  return resortSpot(resort);
+}
 /* ---------- resort activities ----------
    Every Disney resort's recreation schedule (campfires, movies under the stars, pool parties, crafts, rentals, pools),
    from Magical Resort Guide, which posts Disney's own recreation calendars: read October 15, 2026, for calendars in
@@ -4747,6 +4808,11 @@ function raHours(a, resort, id){
     bits.push(dd+(tt ? ' '+tt : '')); });
   return bits.join('; ');
 }
+function raWalk(r, e){
+  var y = stayList().filter(function(z){ return z.r===r && !z.off; })[0], i = cbrInfo(y); if(!i) return '';
+  var sp = raSpot(r, e.where, e.a.n); if(!sp || sp===resortSpot(r)) return '';
+  return '<small>About '+cbrMin(i.b, sp)+' min walk from building '+i.b.n+'</small>';
+}
 function raStopName(a, resort){ return a.n.replace(/^(Jambo House|Kidani Village) /,'')+' at '+shortResort(resort); }
 // Disney resorts where you are that day: where you wake up, and where you sleep.
 function raResortsFor(id){
@@ -4769,7 +4835,7 @@ function raSection(id, st){
     return '<details class="outlook rasec" data-r="'+esc(r)+'"'+(open ? ' open' : '')+'><summary><span><strong>At '+esc(shortResort(r))+' '+(id===todayId() ? 'today' : 'on '+esc(dayDate(id).toLocaleDateString('en-US',{weekday:'long'})))+'</strong> · '+esc(head)+'</span></summary>'+
       '<ul class="ralist">'+ev.map(function(e){
         return '<li><span class="ratime">'+fmtMin(e.from)+(e.to!=null ? '<small>to '+fmtMin(e.to)+'</small>' : '')+'</span><span class="raname"><strong>'+esc(e.a.n)+'</strong>'+(e.a.paid ? ' <small class="rapaid">$'+(e.a.cost ? ' '+esc(e.a.cost) : '')+'</small>' : ' <small>free</small>')+
-          (e.note ? '<small class="ranote">'+esc(e.note)+'</small>' : '')+(e.where ? '<small>'+esc(e.where)+'</small>' : '')+'</span>'+raAddBtn(e.a, r, e.from, e.to, inDay, e.note)+'</li>';
+          (e.note ? '<small class="ranote">'+esc(e.note)+'</small>' : '')+(e.where ? '<small>'+esc(e.where)+'</small>' : '')+raWalk(r, e)+'</span>'+raAddBtn(e.a, r, e.from, e.to, inDay, e.note)+'</li>';
       }).join('')+'</ul>'+
       '<p class="note">Open to anyone visiting the resort, except the pools. Schedules from <a href="'+esc(raUrl(r))+'" target="_blank" rel="noopener">Magical Resort Guide</a> (Disney’s recreation calendar, read '+RA_ASOF+'); they can change, so check with the resort’s recreation team. '+
       '<button class="btn btn-plain btn-small" data-act="raall" data-r="'+esc(r)+'">Everything at '+esc(shortResort(r))+'</button></p></details>';
