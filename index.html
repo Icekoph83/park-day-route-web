@@ -5,7 +5,7 @@
    The blue "next stop" card is the one loud element; everything else stays quiet and high-contrast for sunlight. */
 :root{
   --bg:#EDF2EE; --surface:#FFFFFF; --surface-2:#E1E9E3; --ink:#14261F; --muted:#526359; --line:#C7D3CB;
-  --route:#2443D6; --route-ink:#FFFFFF; --route-soft:#DCE2FB;
+  --route:#2443D6; --route-ink:#FFFFFF; --route-soft:#DCE2FB; --fit:#1F4FB8;
   --ride:#A8361A; --show:#6F2DA8; --food:#0B6B48; --resort:#855400; --place:#3D4F47; --shop:#0E6578; --done:#8A9C93; --warn:#A8361A;
   --font-display:"Bricolage Grotesque","Trebuchet MS",system-ui,sans-serif;
   --font-body:"Atkinson Hyperlegible","Segoe UI",system-ui,-apple-system,sans-serif;
@@ -14,14 +14,14 @@
 @media (prefers-color-scheme: dark){
   :root:not([data-theme="light"]){
     --bg:#0E1714; --surface:#17231F; --surface-2:#22322C; --ink:#E6EFEA; --muted:#9FB2A9; --line:#30423B;
-    --route:#93A8FF; --route-ink:#0A1233; --route-soft:#1E2A55;
+    --route:#93A8FF; --route-ink:#0A1233; --route-soft:#1E2A55; --fit:#A9D4FF;
     --ride:#FF9F7D; --show:#CDA6FF; --food:#74D9AB; --resort:#F0C56A; --place:#B9C9C1; --shop:#7FD6E8; --done:#62756C; --warn:#FF9F7D;
     color-scheme:dark;
   }
 }
 :root[data-theme="dark"]{
   --bg:#0E1714; --surface:#17231F; --surface-2:#22322C; --ink:#E6EFEA; --muted:#9FB2A9; --line:#30423B;
-  --route:#93A8FF; --route-ink:#0A1233; --route-soft:#1E2A55;
+  --route:#93A8FF; --route-ink:#0A1233; --route-soft:#1E2A55; --fit:#A9D4FF;
   --ride:#FF9F7D; --show:#CDA6FF; --food:#74D9AB; --resort:#F0C56A; --place:#B9C9C1; --shop:#7FD6E8; --done:#62756C; --warn:#FF9F7D;
   color-scheme:dark;
 }
@@ -296,16 +296,16 @@ details.stay[open] > .stayhead .staynm::before{content:'− '}
 .mealhead input[type="time"]{min-height:40px;padding:4px 8px;border-radius:9px;border:1.5px solid var(--line);background:var(--bg);color:var(--ink);font-variant-numeric:tabular-nums}
 .meal .res{background:var(--bg)}
 .herebar{display:flex;flex-wrap:wrap;gap:6px 12px;align-items:center;font-size:.9rem;padding:8px 10px;border:1.5px dashed var(--line);border-radius:10px;margin:8px 0}
-.herebar.is-on{border-style:solid;border-color:#2f6fde}
+.herebar.is-on{border-style:solid;border-color:var(--route)}
 .herebar small{color:var(--muted)}
-.sk-you{fill:#2f6fde;stroke:#fff}
-.sk-acc{fill:#2f6fde;opacity:.15}
+.sk-you{fill:var(--route);stroke:var(--surface)}
+.sk-acc{fill:var(--route);opacity:.18}
 .websec{margin-top:12px;padding-top:10px;border-top:1px solid var(--line)}
 .websec h4{margin:6px 0}
 .dlinks{list-style:none;padding:0;margin:0;display:flex;flex-direction:column;gap:10px}
 .dlinks .dres{margin-top:4px;flex-wrap:wrap}
 .dlinks .dres button{font-size:.78rem}
-.linkin{border:2px solid #2f6fde;border-radius:12px;padding:10px 12px;margin:8px 0}
+.linkin{border:2px solid var(--route);border-radius:12px;padding:10px 12px;margin:8px 0}
 .linkin h3{margin:0 0 4px}
 .dguess summary{cursor:pointer;font-weight:700;margin:10px 0 4px}
 .dlinks code{font-size:.85rem}
@@ -320,8 +320,8 @@ details.stay[open] > .stayhead .staynm::before{content:'− '}
 .results li.ragroup{font-weight:700;margin-top:10px;list-style:none}
 .results li.rahead{display:flex;gap:8px;align-items:center;flex-wrap:wrap;list-style:none}
 .results li.rahead select{max-width:16em}
-.kidtip{color:#0f6b3a;font-weight:700}
-.fitbadge{color:#1f4fb8;font-weight:700}
+.kidtip{color:var(--food);font-weight:700}
+.fitbadge{color:var(--fit);font-weight:700}
 .alsoseg{flex-wrap:wrap}
 .codediff{margin:4px 0;padding-left:18px;font-size:.88rem}
 .codebox{width:100%;box-sizing:border-box;font:12px ui-monospace,monospace;word-break:break-all}
