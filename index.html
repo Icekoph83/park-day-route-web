@@ -322,6 +322,7 @@ details.stay[open] > .stayhead .staynm::before{content:'− '}
 .results li.rahead select{max-width:16em}
 .kidtip{color:#0f6b3a;font-weight:700}
 .fitbadge{color:#1f4fb8;font-weight:700}
+.alsoseg{flex-wrap:wrap}
 .codediff{margin:4px 0;padding-left:18px;font-size:.88rem}
 .codebox{width:100%;box-sizing:border-box;font:12px ui-monospace,monospace;word-break:break-all}
 .livebar{display:flex;flex-wrap:wrap;gap:6px 12px;align-items:center;font-size:.88rem;color:var(--muted)}
@@ -504,6 +505,8 @@ var EXTRAS = {
     {t:'R', name:"Storybook Pretzel Cart", lat:28.42035, lng:-81.57910, note:"Storybook Circus in Fantasyland, near Dumbo", ap:1, nn:1, cart:{"items": "Mickey pretzels, jumbo pretzel with cheese, churros", "k": "s"}}
   ],
   EP: [
+    {t:'A', name:'World Discovery Playground', lat:28.37324, lng:-81.54866, note:'between Creations Shop and Test Track (OpenStreetMap)'},
+    {t:'A', name:'World Discovery Splash Zone', lat:28.37388, lng:-81.54797, note:'by Mission: SPACE (OpenStreetMap)'},
     {t:'V', name:'Baby Care Center', lat:28.37191, lng:-81.547795, note:'in the Odyssey building', baby:1},
     {t:'V', name:'First Aid', lat:28.37195, lng:-81.54774, note:'in the Odyssey building, with the Baby Care Center', nn:1},
     {t:'V', name:'Guest Relations', lat:28.37467, lng:-81.54872, note:'near Spaceship Earth'},
@@ -538,6 +541,7 @@ var EXTRAS = {
     {t:'R', name:"Royal Anandapur Tea Company", lat:28.35870, lng:-81.58920, note:"Asia", ap:1, nn:1, cart:{"items": "Teas from around the world, Joffrey's espresso drinks", "k": "s"}}
   ],
   DS: [
+    {t:'A', name:'Marketplace Splash Zone', lat:28.37300, lng:-81.51507, note:"near Disney's Days of Christmas", ap:1},
     {t:'V', name:'Guest Relations', lat:28.37021, lng:-81.51725, note:'Welcome Center'},
     {t:'V', name:'Stroller rentals', lat:28.36910, lng:-81.51877, note:'Town Center', nn:1}
   ]
@@ -970,6 +974,7 @@ function onSettings(snap){
 function cleanSettings(v){
   var o = {home: typeof v.home==='string' ? v.home : ''}, str = function(x){ return typeof x==='string' && x.length < 300; };
   if(typeof v.pace==='string' && v.pace && PACES[v.pace]) o.pace = v.pace;
+  if(Array.isArray(v.also)) o.also = v.also.filter(function(k){ return typeof k==='string' && k && PACES[k]; }).slice(0,5);
   if(v.hop===true) o.hop = true;
   if(v.noll===true) o.noll = true;
   if(v.drops && typeof v.drops==='object'){
@@ -1510,7 +1515,13 @@ var DWELL = {E:45,A:35, S:30, R:45, V:15, W:10, G:10, X:20, B:20};
 // Who's going: [label, walking metres a minute, minutes to gather everyone at each ride or show, minutes for a meal].
 var PACES = {'':['Mixed group (standard)',65,0,45], littles:['Little ones (under 4) and their grown-ups',50,5,55], kids:['Young kids and families',55,5,55],
   teens:['Families with teens',75,0,45], adults:['All adults',80,0,45], multi:['Grandparents and multi-generational',50,5,60]};
-function pace(){ return PACES[(S.settings && S.settings.pace) || ''] || PACES['']; }
+function pace(){
+  var L = typeof groupStyles==='function' ? groupStyles() : [];
+  if(L.length < 2) return PACES[(S.settings && S.settings.pace) || ''] || PACES[''];
+  // A mixed group moves at its slowest member's pace and takes the longest gathering and meal times.
+  var ps = L.map(function(k){ return PACES[k]; });
+  return [L.map(function(k){ return STYLE_SHORT[k]; }).join(' + '), Math.min.apply(null, ps.map(function(x){ return x[1]; })), Math.max.apply(null, ps.map(function(x){ return x[2]; })), Math.max.apply(null, ps.map(function(x){ return x[3]; }))];
+}
 var BREAK_MIN = 90, CHECK_MIN = 20, DAY_START = 9*60, LATE_W = 4, IDLE_W = 0.2, WAIT_W = 0.3;
 /* A Lightning Lane return is a window, not a moment: an hour from the return time unless the card says otherwise.
    Anywhere inside it is on time; the plan only waits when it would arrive early and only counts lateness past its end. */
@@ -3426,6 +3437,7 @@ function renderDay(){
   h += foodList(id, st);
   h += waySection(id, st);
   h += raSection(id, st);
+  h += familyIdeas(id, st);
   h += dropSection(id, st); h += waitSection(id, st);   // Lightning Lane drops and Wait less (with its skip-it ideas) stay on in the park
   if(n && st.some(function(s){ return isTheme(s.z) || (isWater(s.z) && live[s.z]); })) h += liveBar(st);
   if(n && st.some(function(x){ return PARKS[x.z] && PLACES[x.z] && PLACES[x.z].some(function(p){ return p.t==='W'; }); })) h += rrBar(st, nextI);
@@ -3669,13 +3681,16 @@ function settingsHtml(){
     webSettings()+
     '<div class="setrow home x-trip"><span id="lblPace">Who’s going</span><select class="field" id="paceSel" data-act="pace" aria-labelledby="lblPace">'+
       Object.keys(PACES).map(function(k){ return '<option value="'+k+'"'+(k===((S.settings && S.settings.pace)||'')?' selected':'')+'>'+esc(PACES[k][0])+'</option>'; }).join('')+'</select></div>'+
+    '<div class="setrow x-trip"><span>Also traveling with</span><div class="seg alsoseg" role="group" aria-label="Also traveling with">'+Object.keys(STYLE_SHORT).filter(function(k){ return k!==((S.settings && S.settings.pace)||''); }).map(function(k){
+      var on = groupStyles().indexOf(k) > 0; return '<button data-act="stylealso" data-v="'+k+'" aria-pressed="'+on+'">'+STYLE_SHORT[k]+'</button>'; }).join('')+'</div></div>'+
     '<p class="note">Pace for '+esc(pace()[0].toLowerCase())+': walking at about '+pace()[1]+' m a minute'+(pace()[2] ? ', '+pace()[2]+' extra min at each ride or show to gather everyone' : '')+', '+pace()[3]+' min for a meal. Changing it re-times every day.</p>'+
-    (function(){ var g = groupStyle(), t = {littles:'Good fits are marked in Add stops (no height limit, gentle, play spots, seated indoor shows), and Best for little ones there shows only those. Baby Care Centers are under Nearest restroom, and Rider Switch below lets grown-ups take turns on bigger rides.',
+    (function(){ var gs = groupStyles(), T = {littles:'Good fits are marked in Add stops (no height limit, gentle, play spots, seated indoor shows), and Best for little ones there shows only those. Baby Care Centers are under Nearest restroom, and Rider Switch below lets grown-ups take turns on bigger rides.',
       kids:'Rides for about 40 inches and up, play spots and seated indoor shows are marked in Add stops; Best for young kids there shows only those.',
       teens:'Thrill rides and bigger rides are marked in Add stops; Best for teens there shows only those.',
       adults:'Thrill rides and bars or lounges are marked in Add stops; Best for adults there shows only those.',
-      multi:'Gentle rides with no height limit and seated, air-conditioned shows are marked in Add stops, and Best for grandparents there shows only those. The plan walks slower and allows longer meals.'}[g];
-      return t ? '<p class="note">'+t+'</p>' : ''; })()+
+      multi:'Gentle rides with no height limit and seated, air-conditioned shows are marked in Add stops, and Best for grandparents there shows only those. The plan walks slower and allows longer meals.'};
+      if(gs.length > 1) return '<p class="note">With more than one kind of traveler, each place shows who it suits, and Works for everyone in Add stops shows only what suits the whole group. The plan walks at the slowest pace and allows the longest meals.'+(gs.indexOf('littles')>=0 ? ' Nap time ideas show on park days.' : '')+(gs.some(function(k){ return k==='adults' || k==='teens'; }) ? ' After-dark ideas show on park days.' : '')+'</p>';
+      var t = T[gs[0]]; return t ? '<p class="note">'+t+'</p>' : ''; })()+
     '<div class="setrow x-trip"><span id="lblRs">Rider Switch</span><select class="field" id="rsSel" data-act="rs" aria-labelledby="lblRs"><option value="">Everyone rides together</option><option value="1"'+(S.settings.rs ? ' selected' : '')+'>Someone won’t ride: take turns</option></select></div>'+
     (S.settings.rs ? '<p class="note">On the '+Object.keys(RS_RIDES).reduce(function(n,k){ return n+RS_RIDES[k].length; },0)+' rides Disney lists for Rider Switch, the plan allows about '+RS_EXTRA+' min more for the second turn, and rides too tall for your shortest rider stay in the lists. Tell the cast member at the entrance: one group rides while the other waits nearby with the little one, then up to two from the waiting group ride without the standby line.</p>' : '')+
     '<div class="setrow x-trip"><span id="lblNoll">Lightning Lane</span><select class="field" id="nollSel" data-act="noll" aria-labelledby="lblNoll"><option value="">Show the options on ride cards</option><option value="1"'+(S.settings.noll ? ' selected' : '')+'>Not using it: hide everywhere</option></select></div>'+
@@ -3847,7 +3862,7 @@ function renderAdd(){
   });
   var isWL = prefs.zone==='WL';
   var dfilt = (isPark && ui.type==='R') || (isRD && ui.type!=='B') || isWL, rfilt = isPark && ui.type==='A', sfilt = (isPark || isRD) && ui.type==='B';
-  if(isPark && groupStyle()) th += '<span class="wlbreak"></span><button class="type" data-act="fitonly" aria-pressed="'+(!!prefs.fitOnly)+'">Best for '+esc(PACES[groupStyle()][0].replace(/ and their grown-ups| and families|Families with |All /g,'').toLowerCase())+'</button>';
+  if(isPark && groupStyle()) th += '<span class="wlbreak"></span><button class="type" data-act="fitonly" aria-pressed="'+(!!prefs.fitOnly)+'">'+(groupStyles().length > 1 ? 'Works for everyone' : 'Best for '+esc(PACES[groupStyle()][0].replace(/ and their grown-ups| and families|Families with |All /g,'').toLowerCase()))+'</button>';
   if(rfilt) th += rideFilterChips();
   if(isWL){
     var wlz = WL_WHERE[prefs.wlz] ? prefs.wlz : '';
@@ -3894,7 +3909,7 @@ function renderAdd(){
     if(sfilt && (p.t==='B' || p.sh) && shopHidden(p)) return;
     if(dfilt && p.t==='R' && (diningHidden(p.name, p.z) || !dietMatch(p))) return;
     if(rfilt && rideHidden(p)) return;
-    if(isPark && prefs.fitOnly && groupStyle() && p.t!=='W' && p.t!=='G' && !groupFit(p)) return;
+    if(isPark && prefs.fitOnly && groupStyle() && p.t!=='W' && p.t!=='G' && !groupFitAll(p)) return;
     if(q && p.name.toLowerCase().indexOf(q)<0 && (p.at||'').toLowerCase().indexOf(q)<0) return;
     shown++;
     if(isWL && !WL_WHERE[prefs.wlz] && p.z!==lastWZ){ lastWZ = p.z; lastWL = null; h += '<li class="wlhead">'+esc(WL_WHERE[p.z]||'')+'</li>'; }
@@ -3942,7 +3957,7 @@ document.getElementById('app').addEventListener('click', function(ev){
   // Someone following a shared trip can always look around, and can arrange and tick off stops once they use their own order.
   var mine = usingMine(id), o = mine ? mineAll[mineKey(id)] : null, cur;
   if(isRO() && !{fitonly:1,raall:1,openweb:1,tripcode:1,linkdismiss:1,pane:1,day:1,zone:1,type:1,maps:1,gomode:1,scope:1,order:1,dfilter:1,wlz:1,wlonly:1,skstay:1,rrfind:1,rrcomp:1,rfilter:1,refreshlive:1,dietopen:1,diet:1,fav:1,got:1,foodstar:1,dropevery:1,dropgone:1,calzip:1,pfav:1,chpick:1,chask:1,favonly:1,tfollow:1,view:1,cardsall:1,sopen:1,showmap:1,showdone:1,tonext:1,undo:1}[act] && !(mine && {done:1,toggle:1,up:1,down:1,reset:1,optimize:1,meal:1,mealdur:1,mealclose:1,mealforce:1,hop:1,fillkind:1,add:1,addname:1,add2:1,quickadd:1,mealadd:1,rradd:1,rm:1,cleartime:1,sort:1,calzip:1,rainswap:1,wayadd:1}[act])) return;
-  if(mine && day && {raadd:1,add:1,addname:1,add2:1,quickadd:1,mealadd:1,rradd:1,rm:1,cleartime:1,sort:1,rainswap:1,wayadd:1}[act]){
+  if(mine && day && {napbreak:1,nightadd:1,raadd:1,add:1,addname:1,add2:1,quickadd:1,mealadd:1,rradd:1,rm:1,cleartime:1,sort:1,rainswap:1,wayadd:1}[act]){
     if(act==='cleartime' && !isOwnStop(id, {id:b.dataset.id})) return;
     day = mineProxy = {stops: displayed(id).map(function(s){ return Object.assign({}, s); }), mode:'custom', __mine:id};
   }
@@ -3954,6 +3969,13 @@ document.getElementById('app').addEventListener('click', function(ev){
     case 'sopen': ui.openStop = ui.openStop || {}; ui.openStop[b.dataset.id] = !ui.openStop[b.dataset.id]; renderDay(); break;
     case 'showmap': ui.showMap = !ui.showMap; renderDay(); break;
     case 'fitonly': prefs.fitOnly = !prefs.fitOnly; savePrefs(); renderAdd(); break;
+    case 'napbreak': (function(){ if(!day) return; var y = stayAt(id,'pm') || startStay(id), pl = y ? stayPlace(y) : null; if(!pl) return;
+      var s2 = makeStop(pl); s2.time = '12:30'; s2.dur = 120; insertStop(day, s2); if(dayMode(id)==='custom') sortByTime(day);
+      setStatus('Added a break at '+shortResort(y.r)+' from 12:30 PM.'); commit(id); })(); break;
+    case 'nightadd': (function(){ if(!day) return; var pp = (PLACES[b.dataset.z]||[])[+b.dataset.i]; if(!pp) return; var s3 = makeStop(pp); if(b.dataset.t) s3.time = b.dataset.t;
+      insertStop(day, s3); if(dayMode(id)==='custom') sortByTime(day); setStatus('Added '+pp.name+(b.dataset.t ? ' at '+fmtTime(b.dataset.t) : '')+'.'); commit(id); })(); break;
+    case 'stylealso': (function(){ var a = Array.isArray(S.settings.also) ? S.settings.also.slice() : [], k = b.dataset.v, at = a.indexOf(k);
+      if(at>=0) a.splice(at, 1); else a.push(k); if(a.length) S.settings.also = a; else delete S.settings.also; commit('@settings'); renderAdd(); })(); break;
     case 'raall': ui.raR = b.dataset.r; prefs.zone = 'RA'; prefs.pane = 'add'; ui.q = ''; savePrefs(); applyPane(); renderAdd(); break;
     case 'raadd':
       (function(){
@@ -4419,7 +4441,7 @@ document.getElementById('app').addEventListener('focusout', function(ev){
 
   } else if(t.id==='newDayDate') setTimeout(catchUp, 0);
 });
-document.getElementById('app').addEventListener('toggle', function(ev){ var t = ev.target; if(!t || !t.classList) return; if(t.classList.contains('settings')){ ui.settingsOpen = t.open; return; } if(t.classList.contains('dguess')){ ui.dguess = t.open; return; } if(t.classList.contains('rasec')){ (ui.raOpen = ui.raOpen || {})[t.dataset.r] = t.open; return; } if(t.classList.contains('stay')){ (ui.stayOpen = ui.stayOpen || {})[t.dataset.i] = t.open; return; } if(t.classList.contains('calx')){ ui.cal = t.open; return; } if(t.classList.contains('wayx')){ ui.way = t.open; return; } if(t.classList.contains('rainplan')){ ui.rain = t.open; return; } if(t.classList.contains('waitless')){ ui.waitOpen = t.open; if(t.open && !t.dataset.trip) setTimeout(renderDay, 0); } else if(t.classList.contains('drops')) ui.drops = t.open; else if(t.classList.contains('dropset')) ui.dropSet = t.open; else if(t.classList.contains('foodlist')) ui.food = t.open; else if(t.classList.contains('outlook')) ui.outlook = t.open; else if(t.classList.contains('seas')) ui.seasOpen[t.dataset.k] = t.open; }, true);
+document.getElementById('app').addEventListener('toggle', function(ev){ var t = ev.target; if(!t || !t.classList) return; if(t.classList.contains('settings')){ ui.settingsOpen = t.open; return; } if(t.classList.contains('dguess')){ ui.dguess = t.open; return; } if(t.classList.contains('famideas')){ (ui.famOpen = ui.famOpen || {})[t.dataset.k] = t.open; return; } if(t.classList.contains('rasec')){ (ui.raOpen = ui.raOpen || {})[t.dataset.r] = t.open; return; } if(t.classList.contains('stay')){ (ui.stayOpen = ui.stayOpen || {})[t.dataset.i] = t.open; return; } if(t.classList.contains('calx')){ ui.cal = t.open; return; } if(t.classList.contains('wayx')){ ui.way = t.open; return; } if(t.classList.contains('rainplan')){ ui.rain = t.open; return; } if(t.classList.contains('waitless')){ ui.waitOpen = t.open; if(t.open && !t.dataset.trip) setTimeout(renderDay, 0); } else if(t.classList.contains('drops')) ui.drops = t.open; else if(t.classList.contains('dropset')) ui.dropSet = t.open; else if(t.classList.contains('foodlist')) ui.food = t.open; else if(t.classList.contains('outlook')) ui.outlook = t.open; else if(t.classList.contains('seas')) ui.seasOpen[t.dataset.k] = t.open; }, true);
 setInterval(function(){
   var id = curDayId(); if(!id || id!==todayId() || document.hidden) return;
   var d = dropNow(id, displayed(id)), sig = d ? d.g.key+'|'+d.left : '';
@@ -4763,15 +4785,29 @@ var KID_SPOTS = {'MK|Dumbo the Flying Elephant':'Big Top play area in the queue:
   'MK|The Many Adventures of Winnie the Pooh':'Interactive queue with hands-on things to play with in the Hundred Acre Wood while you wait',
   'EP|Advanced Training Lab':'Indoor, air-conditioned play area and games inside the Mission: Space building',
   'EP|ImageWorks - The "What If" Labs':'Indoor, air-conditioned hands-on play area at the end of Journey Into Imagination, where Figment meets guests',
-  'AK|Wilderness Explorers':'Badge activities at stations all over the park: a gentle way for young kids to explore at their own speed'};
+  'AK|Wilderness Explorers':'Badge activities at stations all over the park: a gentle way for young kids to explore at their own speed',
+  'EP|World Discovery Playground':'Outdoor playground whose theme changes with EPCOT’s festivals and new films',
+  'EP|World Discovery Splash Zone':'Small splash pad. Bring a change of clothes',
+  'DS|Marketplace Splash Zone':'Splash pad in the Marketplace. Bring a change of clothes; Disney Springs has a second one behind Earl of Sandwich'};
 /* Fit for the group you chose under Who's going: a short badge on the places that suit it, from the ride facts
    (height, thrills, drops, darkness, spinning), indoor seated shows, play spots and bars. */
-function groupStyle(){ return (S.settings && S.settings.pace) || ''; }
+// The group: the main choice under Who's going plus anyone else traveling along (settings.also).
+function groupStyles(){ var m = (S.settings && S.settings.pace) || '', a = (S.settings && Array.isArray(S.settings.also)) ? S.settings.also : [];
+  return (m ? [m] : []).concat(a.filter(function(k){ return k && k!==m && PACES[k]; })); }
+function groupStyle(){ return groupStyles()[0] || ''; }
+var STYLE_SHORT = {littles:'Little ones', kids:'Young kids', teens:'Teens', adults:'Adults', multi:'Grandparents'};
 // Sit-down, air-conditioned theater shows: a real break for tired feet, naps in a stroller and grandparents.
 var SEATED_AC = /PhilharMagic|Carousel of Progress|Hall of Presidents|Enchanted Tiki Room|Country Bear|Laugh Floor|Far and Wide|Impressions de France|American Adventure|Reflections of China|Turtle Talk|Short Film Festival|Awesome Planet|Mickey Mouse Clubhouse Live|The Little Mermaid - A Musical|First Time in Forever|Festival of the Lion King|Big Blue\.\.\. and Beyond|Better Zoogether/i;
 function seatedShow(p){ return !!PARKS[p.z] && (p.t==='S' || p.t==='A') && SEATED_AC.test(p.name); }
 function groupFit(p){
-  var g = groupStyle(); if(!g || !PARKS[p.z]) return '';
+  var L = groupStyles(); if(!L.length || !PARKS[p.z]) return '';
+  if(L.length===1) return groupFit1(p, L[0]);
+  var hits = L.map(function(g){ return groupFit1(p, g) ? STYLE_SHORT[g] : ''; }).filter(Boolean);
+  return hits.length===L.length ? 'Works for everyone' : hits.length ? 'Good for '+hits.join(' and ').toLowerCase() : '';
+}
+function groupFitAll(p){ var L = groupStyles(); return L.length && L.every(function(g){ return !!groupFit1(p, g); }); }
+function groupFit1(p, g){
+  if(!g || !PARKS[p.z]) return '';
   var i = p.t==='A' ? info(p) : null, h = i ? i[0] : null, n = i ? i[1] : '';
   if(/ at Mickey's (Not-So-Scary|Very Merry)| at Disney After Hours/.test(p.name)) return '';   // party-only
   if(g==='littles'){ if(kidSpot(p)) return 'Play spot for little ones'; if(seatedShow(p)) return 'Seated, air-conditioned break'; if(i && !h && !/[TBC]/.test(n)) return 'Good for little ones'; return ''; }
@@ -4782,6 +4818,45 @@ function groupFit(p){
   return '';
 }
 function kidSpot(p){ return KID_SPOTS[p.z+'|'+p.name] || ''; }
+/* Ideas for the group on park days: nap time with little ones, and after dark for teens and adults. */
+var NIGHT_SHOWS = /Happily Ever After|Luminous|Fantasmic|Disney Starlight|Tree of Life Awakenings|Disney Movie Magic|Wonderful World of Animation/;
+function familyIdeas(id, st){
+  var gs = groupStyles(), zs = []; st.forEach(function(x){ if(isTheme(x.z) && zs.indexOf(x.z)<0) zs.push(x.z); });
+  if(!zs.length || !gs.length) return '';
+  var have = {}; st.forEach(function(x){ have[x.z+'|'+x.name] = 1; });
+  var ref = st.filter(function(x){ return !x.done && isTheme(x.z) && x.lat!=null; })[0] || st.filter(function(x){ return isTheme(x.z) && x.lat!=null; })[0];
+  var addBtn = function(p, t){ var i = PLACES[p.z].indexOf(p); return have[p.z+'|'+p.name] ? '<small>in your day</small>' :
+    '<button class="tagbtn x-trip x-plan" data-act="'+(t ? 'nightadd' : 'wayadd')+'" data-z="'+p.z+'" data-i="'+i+'"'+(t ? ' data-t="'+t+'"' : '')+'>Add</button>'; };
+  var walk = function(p){ return ref && p.lat!=null ? ' · '+Math.max(1, Math.round(hav(ref, p)*1.3/pace()[1]))+' min walk' : ''; };
+  var h = '';
+  if(gs.indexOf('littles')>=0){
+    var mid = st.some(function(x, i){ return x.t==='H' && i>0 && i<st.length-1; }), y = stayAt(id,'pm') || startStay(id), body = '';
+    if(!mid && y && y.r) body += '<li>Little ones usually nap best back in the room. <button class="tagbtn x-trip x-plan" data-act="napbreak">Add a break at '+esc(shortResort(y.r))+' from 12:30 PM</button></li>';
+    else if(mid) body += '<li>Your day already has a break back at the resort.</li>';
+    var shows = []; zs.forEach(function(z){ PLACES[z].forEach(function(p){ if(seatedShow(p)) shows.push(p); }); });
+    if(ref) shows.sort(function(a, b){ return hav(ref, a) - hav(ref, b); });
+    if(shows.length) body += '<li>Or a stroller nap in the cool and dark of a seated show: '+shows.slice(0,3).map(function(p){ return esc(p.name)+walk(p)+' '+addBtn(p); }).join('; ')+'</li>';
+    var spots = []; zs.forEach(function(z){ PLACES[z].forEach(function(p){ if(kidSpot(p)) spots.push(p); }); });
+    if(spots.length) body += '<li>Play spots: '+spots.map(function(p){ return esc(p.name)+walk(p)+' '+addBtn(p); }).join('; ')+'</li>';
+    var bc = []; zs.forEach(function(z){ PLACES[z].forEach(function(p){ if(p.baby) bc.push(p); }); });
+    if(bc.length) body += '<li>'+bc.map(function(p){ return esc(p.name)+(p.note ? ' ('+esc(p.note.split(' · ')[0])+')' : ''); }).join('; ')+': a quiet, air-conditioned room to feed, change and rest.</li>';
+    h += '<details class="outlook famideas" data-k="nap"'+(ui.famOpen && ui.famOpen.nap ? ' open' : '')+'><summary><span><strong>Nap time and little ones</strong> · '+(mid ? 'break planned' : 'ideas for the middle of the day')+'</span></summary><ul class="rainlist">'+body+'</ul></details>';
+  }
+  if(gs.indexOf('adults')>=0 || gs.indexOf('teens')>=0){
+    var body2 = '';
+    zs.forEach(function(z){ PLACES[z].forEach(function(p){ if(p.t!=='S' || !NIGHT_SHOWS.test(p.name)) return; var sh = showTimes(p, id), t = sh && sh.times && sh.times.length ? sh.times[sh.times.length-1] : '';
+      body2 += '<li><strong>'+esc(p.name)+'</strong>'+(t ? ' at '+esc(fmtTime(t)) : '')+' '+addBtn(p, t)+'</li>'; }); });
+    var rides = []; zs.forEach(function(z){ PLACES[z].forEach(function(p){ if(p.t!=='A') return; var i2 = info(p); if(!i2 || !/[TBs]/.test(i2[1])) return;
+      var a = typWait(p, id, 13*60), b = typWait(p, id, 20*60); if(a!=null && b!=null && a - b >= 10) rides.push({p:p, a:a, b:b}); }); });
+    rides.sort(function(x, y){ return (y.a - y.b) - (x.a - x.b); });
+    if(rides.length) body2 += '<li>Rides that get shorter at night: '+rides.slice(0,3).map(function(r){ return esc(r.p.name)+' (usually ~'+r.a+' min at 1 PM, ~'+r.b+' at 8 PM) '+addBtn(r.p); }).join('; ')+'</li>';
+    if(gs.indexOf('adults')>=0){ var bars = []; zs.forEach(function(z){ PLACES[z].forEach(function(p){ if(p.t==='R' && diningKind(p.name, p.z)==='bar') bars.push(p); }); });
+      if(ref) bars.sort(function(a, b){ return hav(ref, a) - hav(ref, b); });
+      if(bars.length) body2 += '<li>A drink: '+bars.slice(0,3).map(function(p){ return esc(p.name)+walk(p)+' '+addBtn(p); }).join('; ')+'</li>'; }
+    if(body2) h += '<details class="outlook famideas" data-k="night"'+(ui.famOpen && ui.famOpen.night ? ' open' : '')+'><summary><span><strong>After dark</strong> · nighttime shows'+(rides.length ? ' and shorter lines' : '')+'</span></summary><ul class="rainlist">'+body2+'</ul></details>';
+  }
+  return h;
+}
 /* ---------- resort activities ----------
    Every Disney resort's recreation schedule (campfires, movies under the stars, pool parties, crafts, rentals, pools),
    from Magical Resort Guide, which posts Disney's own recreation calendars: read October 15, 2026, for calendars in
