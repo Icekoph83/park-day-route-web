@@ -2868,12 +2868,22 @@ function rainAlts(x, have){
     .map(function(p){ return {p:p, d:hav(x, p)}; }).sort(function(a,b){ return a.d-b.d; }).slice(0,2);
 }
 // On an outdoor stop's own card: swap it for an indoor one right there.
+/* The wait at a storm swap: right now from the live times when they are today's, else the usual wait in a stormy
+   afternoon (3 PM) or now on the day itself; for a show, its next performance. */
+function rainWait(p){
+  var id = curDayId(), today = id===todayId(), L = today ? liveOf(p) : null;
+  if(L && L.recent && L.st && L.st!=='O') return L.st==='D' ? 'down now' : 'closed now';
+  if(p.t==='S'){ var sh = id ? showTimes(p, id) : null, nm = today ? nowMin() : 0;
+    var nx = sh && sh.times ? sh.times.filter(function(t){ return toMin(t) >= nm; })[0] : null; return nx ? 'next show '+fmtTime(nx) : ''; }
+  if(L && L.recent && L.w!=null) return L.w+' min wait now';
+  var w = typWait(p, id, today ? nowMin() : 15*60); return w!=null ? 'usually ~'+w+' min wait' : '';
+}
 function rainRow(x, st){
   if(x.done || x.lat==null || !outdoor(x)) return '';
   var have = {}; st.forEach(function(s){ have[s.z+'|'+s.name] = 1; });
   var alt = rainAlts(x, have); if(!alt.length) return '';
   return '<div class="ctl rainrow x-trip x-plan"><span class="quicklabel">If it storms, swap for</span>'+alt.map(function(a){
-    return '<button class="btn btn-plain btn-small" data-act="rainswap" data-id="'+x.id+'" data-z="'+x.z+'" data-i="'+PLACES[x.z].indexOf(a.p)+'" aria-label="Swap '+esc(x.name)+' for '+esc(a.p.name)+', '+Math.max(1, Math.round(a.d*1.3/pace()[1]))+' min walk">'+esc(a.p.name)+' <small>'+Math.max(1, Math.round(a.d*1.3/pace()[1]))+' min</small></button>'; }).join('')+'</div>';
+    return '<button class="btn btn-plain btn-small" data-act="rainswap" data-id="'+x.id+'" data-z="'+x.z+'" data-i="'+PLACES[x.z].indexOf(a.p)+'" aria-label="Swap '+esc(x.name)+' for '+esc(a.p.name)+', '+Math.max(1, Math.round(a.d*1.3/pace()[1]))+' min walk">'+esc(a.p.name)+' <small>'+Math.max(1, Math.round(a.d*1.3/pace()[1]))+' min walk'+(rainWait(a.p) ? ' · '+esc(rainWait(a.p)) : '')+'</small></button>'; }).join('')+'</div>';
 }
 function rainSection(id, st){
   var out = st.filter(function(x){ return !x.done && (outdoor(x) || (isWater(x.z) && (x.t==='A' || x.t==='R'))); });
@@ -2885,7 +2895,7 @@ function rainSection(id, st){
   out.filter(function(x){ return !isWater(x.z); }).forEach(function(x){
     var alt = rainAlts(x, have);
     h += '<li><strong>'+esc(x.name)+'</strong> usually pauses for lightning.'+(alt.length ? ' Indoors nearby: ' : '')+
-      alt.map(function(a){ var i = PLACES[x.z].indexOf(a.p); return esc(a.p.name)+' ('+Math.max(1, Math.round(a.d*1.3/pace()[1]))+' min)'+
+      alt.map(function(a){ var i = PLACES[x.z].indexOf(a.p); return esc(a.p.name)+' ('+Math.max(1, Math.round(a.d*1.3/pace()[1]))+' min walk'+(rainWait(a.p) ? ', '+esc(rainWait(a.p)) : '')+')'+
         ' <button class="tagbtn x-trip x-plan" data-act="rainswap" data-id="'+x.id+'" data-z="'+x.z+'" data-i="'+i+'" aria-label="Swap '+esc(x.name)+' for '+esc(a.p.name)+'">Swap</button>'; }).join(', ')+'</li>';
   });
   return h+'</ul><p class="note">Unofficial: what usually stops in storms. Lightning pauses are common on Florida afternoons; check the Disney app for what is running.</p></details>';
