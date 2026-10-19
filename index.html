@@ -320,6 +320,7 @@ details.stay[open] > .stayhead .staynm::before{content:'− '}
 .results li.ragroup{font-weight:700;margin-top:10px;list-style:none}
 .results li.rahead{display:flex;gap:8px;align-items:center;flex-wrap:wrap;list-style:none}
 .results li.rahead select{max-width:16em}
+.kidtip{color:#0f6b3a;font-weight:700}
 .codediff{margin:4px 0;padding-left:18px;font-size:.88rem}
 .codebox{width:100%;box-sizing:border-box;font:12px ui-monospace,monospace;word-break:break-all}
 .livebar{display:flex;flex-wrap:wrap;gap:6px 12px;align-items:center;font-size:.88rem;color:var(--muted)}
@@ -3274,6 +3275,7 @@ function stopSummary(x, id, clock){
   if(!x.ll && !x.done){ var tb = typBits(x, id, x.time ? toMin(x.time) : (clock[x.id] ? clock[x.id].at : null), id===todayId())[0]; if(tb) out.push(tb.replace(/^usually about /,'~').replace(/ then$/,'')); }
   if(x.dur) out.push('about '+durWords(x.dur));
   if(lockedStop(id, x) && !x.done) out.push('group time');
+  if(kidSpot(x) && !x.done) out.push('🛝 play area in the queue');
   return out.join(' · ');
 }
 var undoSnap = null;
@@ -3509,6 +3511,7 @@ function renderDay(){
         '<span class="tagline"><span class="tag '+t2[1]+'">'+esc(t2[0])+'</span>'+(x.meal && MEALS[x.meal] ? '<span>'+MEALS[x.meal][0]+'</span>' : '')+(x.dur ? '<span>about '+durWords(x.dur)+'</span>' : '')+(x.t==='R' ? spans(seasWords(x)) : '')+(z2?'<span>'+esc(z2)+'</span>':'')+(x.note?'<span>'+esc(x.note)+'</span>':'')+(x.ap?'<span>approximate pin</span>':'')+spans(rideFacts(x, true).filter(function(t){ return !(noLL(x) && !x.ll && t.indexOf('Lightning Lane')===0); }).concat(id===todayId() && !x.done ? liveBits(x).concat(x.t==='R' ? walkBits(x) : []) : []))+(x.lat==null && x.t!=='H'?'<span>found by name</span>':'')+(x.time && !x.done && x.ll ? '<span>return window '+esc(fmtTime(x.time))+' to '+esc(fmtTime(llEnd(x)))+'</span>'+((clock[x.id] && clock[x.id].at > toMin(x.time) + 2) ? '<span>around '+fmtMin(clock[x.id].at)+'</span>' : '') : '')+
           (x.time && !x.ll && mode==='auto' && !ro && !x.done?'<span>held by its time</span>':'')+
           ((function(){ var vt = !x.done && viewTip(x); return vt ? '<span>'+(x.time ? 'be there by '+fmtMin(toMin(x.time) - vt.lead)+' · ' : 'arrive about '+vt.lead+' min early · ')+esc(vt.tip)+'</span>' : ''; })())+
+          (kidSpot(x) && !x.done ? '<span class="kidtip">🛝 '+esc(kidSpot(x))+'</span>' : '')+
           (rsOn(x) && !x.done ? '<span>Rider Switch: ask at the entrance; about '+RS_EXTRA+' min more for the second turn</span>' : '')+
           (lockedStop(id, x) && !x.done ? '<span class="tag lock">Group time · everyone meets here</span>' : (mine && isOwnStop(id, x) ? '<span>your stop</span>' : ''))+
           (function(){ var sh = x.done ? null : showTimes(x, id); if(!sh) return '';
@@ -3887,7 +3890,7 @@ function renderAdd(){
     if(isWL){ var wl = hasWalkup(p.name, p.z); if(wl!==lastWL){ lastWL = wl; h += '<li class="wlsub">'+(wl ? 'On Disney’s walk-up list' : 'Other table service · walk in at the podium')+'</li>'; } }
     var tp = typeOf(p), c = inDay[p.z+'|'+p.name], isHome = p.t==='H' && homes.indexOf(p.name)>=0;
     h += '<li class="res"><div><div class="rname">'+esc(p.name)+'</div><div class="rmeta"><span class="tag '+tp[1]+'">'+esc(tp[0])+'</span>'+
-      (p.note ? '<span>'+esc(p.note)+'</span>' : '')+(p.ap ? '<span>approximate pin</span>' : '')+
+      (p.note ? '<span>'+esc(p.note)+'</span>' : '')+(p.ap ? '<span>approximate pin</span>' : '')+(kidSpot(p) ? '<span class="kidtip">🛝 '+esc(kidSpot(p))+'</span>' : '')+
       (p.t==='R' && !isBooth(p.name, p.z) && KIND_LABEL[diningKind(p.name, p.z)] ? '<span>'+KIND_LABEL[diningKind(p.name, p.z)]+'</span>' : '')+
       (p.t==='R' ? spans(walkBits(p).concat(cartWords(p)).concat(dietWords(p))) : '')+(isWL && !walkBits(p).length ? walkHow(p) : '')+
       ((p.t==='A' || p.t==='S') ? spans(rideFacts(p).concat(liveBits(p)).concat(id && !(id===todayId() && liveOf(p) && liveOf(p).recent && liveOf(p).w!=null) ? typRangeWords(p, id) : [])) : '')+
@@ -4742,6 +4745,9 @@ function raSpot(resort, where, name){
   }
   return resortSpot(resort);
 }
+/* Play spots for little ones, where the wait itself is the fun. Dumbo's indoor queue: tested by this family, Oct 19, 2026. */
+var KID_SPOTS = {'MK|Dumbo the Flying Elephant':'Big Top play area in the queue: an air-conditioned circus tent with a toddler area (about ages 1 to 3) in the center ring and climbing structures and slides for older kids, with seats for parents'};
+function kidSpot(p){ return KID_SPOTS[p.z+'|'+p.name] || ''; }
 /* ---------- resort activities ----------
    Every Disney resort's recreation schedule (campfires, movies under the stars, pool parties, crafts, rentals, pools),
    from Magical Resort Guide, which posts Disney's own recreation calendars: read October 15, 2026, for calendars in
