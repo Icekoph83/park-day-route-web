@@ -321,6 +321,7 @@ details.stay[open] > .stayhead .staynm::before{content:'− '}
 .results li.rahead{display:flex;gap:8px;align-items:center;flex-wrap:wrap;list-style:none}
 .results li.rahead select{max-width:16em}
 .kidtip{color:#0f6b3a;font-weight:700}
+.fitbadge{color:#1f4fb8;font-weight:700}
 .codediff{margin:4px 0;padding-left:18px;font-size:.88rem}
 .codebox{width:100%;box-sizing:border-box;font:12px ui-monospace,monospace;word-break:break-all}
 .livebar{display:flex;flex-wrap:wrap;gap:6px 12px;align-items:center;font-size:.88rem;color:var(--muted)}
@@ -1506,7 +1507,9 @@ function gateOrigin(list){
 var DWELL = {E:45,A:35, S:30, R:45, V:15, W:10, G:10, X:20, B:20};
 /* Who is going sets the pace. These are planning allowances, not measurements: metres walked a minute, minutes added
    at each ride or show for gathering everyone (strollers, bathrooms, finding seats), and minutes for a meal. */
-var PACES = {'':['Mixed group (standard)',65,0,45], adults:['All adults',80,0,45], kids:['Family with small children',55,5,55], multi:['Multi-generational',50,5,60]};
+// Who's going: [label, walking metres a minute, minutes to gather everyone at each ride or show, minutes for a meal].
+var PACES = {'':['Mixed group (standard)',65,0,45], littles:['Little ones (under 4) and their grown-ups',50,5,55], kids:['Young kids and families',55,5,55],
+  teens:['Families with teens',75,0,45], adults:['All adults',80,0,45], multi:['Grandparents and multi-generational',50,5,60]};
 function pace(){ return PACES[(S.settings && S.settings.pace) || ''] || PACES['']; }
 var BREAK_MIN = 90, CHECK_MIN = 20, DAY_START = 9*60, LATE_W = 4, IDLE_W = 0.2, WAIT_W = 0.3;
 /* A Lightning Lane return is a window, not a moment: an hour from the return time unless the card says otherwise.
@@ -3511,7 +3514,7 @@ function renderDay(){
         '<span class="tagline"><span class="tag '+t2[1]+'">'+esc(t2[0])+'</span>'+(x.meal && MEALS[x.meal] ? '<span>'+MEALS[x.meal][0]+'</span>' : '')+(x.dur ? '<span>about '+durWords(x.dur)+'</span>' : '')+(x.t==='R' ? spans(seasWords(x)) : '')+(z2?'<span>'+esc(z2)+'</span>':'')+(x.note?'<span>'+esc(x.note)+'</span>':'')+(x.ap?'<span>approximate pin</span>':'')+spans(rideFacts(x, true).filter(function(t){ return !(noLL(x) && !x.ll && t.indexOf('Lightning Lane')===0); }).concat(id===todayId() && !x.done ? liveBits(x).concat(x.t==='R' ? walkBits(x) : []) : []))+(x.lat==null && x.t!=='H'?'<span>found by name</span>':'')+(x.time && !x.done && x.ll ? '<span>return window '+esc(fmtTime(x.time))+' to '+esc(fmtTime(llEnd(x)))+'</span>'+((clock[x.id] && clock[x.id].at > toMin(x.time) + 2) ? '<span>around '+fmtMin(clock[x.id].at)+'</span>' : '') : '')+
           (x.time && !x.ll && mode==='auto' && !ro && !x.done?'<span>held by its time</span>':'')+
           ((function(){ var vt = !x.done && viewTip(x); return vt ? '<span>'+(x.time ? 'be there by '+fmtMin(toMin(x.time) - vt.lead)+' · ' : 'arrive about '+vt.lead+' min early · ')+esc(vt.tip)+'</span>' : ''; })())+
-          (kidSpot(x) && !x.done ? '<span class="kidtip">🛝 '+esc(kidSpot(x))+'</span>' : '')+
+          (groupFit(x) && !x.done ? '<span class="fitbadge">✓ '+esc(groupFit(x))+'</span>' : '')+(kidSpot(x) && !x.done ? '<span class="kidtip">🛝 '+esc(kidSpot(x))+'</span>' : '')+
           (rsOn(x) && !x.done ? '<span>Rider Switch: ask at the entrance; about '+RS_EXTRA+' min more for the second turn</span>' : '')+
           (lockedStop(id, x) && !x.done ? '<span class="tag lock">Group time · everyone meets here</span>' : (mine && isOwnStop(id, x) ? '<span>your stop</span>' : ''))+
           (function(){ var sh = x.done ? null : showTimes(x, id); if(!sh) return '';
@@ -3667,6 +3670,12 @@ function settingsHtml(){
     '<div class="setrow home x-trip"><span id="lblPace">Who’s going</span><select class="field" id="paceSel" data-act="pace" aria-labelledby="lblPace">'+
       Object.keys(PACES).map(function(k){ return '<option value="'+k+'"'+(k===((S.settings && S.settings.pace)||'')?' selected':'')+'>'+esc(PACES[k][0])+'</option>'; }).join('')+'</select></div>'+
     '<p class="note">Pace for '+esc(pace()[0].toLowerCase())+': walking at about '+pace()[1]+' m a minute'+(pace()[2] ? ', '+pace()[2]+' extra min at each ride or show to gather everyone' : '')+', '+pace()[3]+' min for a meal. Changing it re-times every day.</p>'+
+    (function(){ var g = groupStyle(), t = {littles:'Good fits are marked in Add stops (no height limit, gentle, play spots, seated indoor shows), and Best for little ones there shows only those. Baby Care Centers are under Nearest restroom, and Rider Switch below lets grown-ups take turns on bigger rides.',
+      kids:'Rides for about 40 inches and up, play spots and seated indoor shows are marked in Add stops; Best for young kids there shows only those.',
+      teens:'Thrill rides and bigger rides are marked in Add stops; Best for teens there shows only those.',
+      adults:'Thrill rides and bars or lounges are marked in Add stops; Best for adults there shows only those.',
+      multi:'Gentle rides with no height limit and seated, air-conditioned shows are marked in Add stops, and Best for grandparents there shows only those. The plan walks slower and allows longer meals.'}[g];
+      return t ? '<p class="note">'+t+'</p>' : ''; })()+
     '<div class="setrow x-trip"><span id="lblRs">Rider Switch</span><select class="field" id="rsSel" data-act="rs" aria-labelledby="lblRs"><option value="">Everyone rides together</option><option value="1"'+(S.settings.rs ? ' selected' : '')+'>Someone won’t ride: take turns</option></select></div>'+
     (S.settings.rs ? '<p class="note">On the '+Object.keys(RS_RIDES).reduce(function(n,k){ return n+RS_RIDES[k].length; },0)+' rides Disney lists for Rider Switch, the plan allows about '+RS_EXTRA+' min more for the second turn, and rides too tall for your shortest rider stay in the lists. Tell the cast member at the entrance: one group rides while the other waits nearby with the little one, then up to two from the waiting group ride without the standby line.</p>' : '')+
     '<div class="setrow x-trip"><span id="lblNoll">Lightning Lane</span><select class="field" id="nollSel" data-act="noll" aria-labelledby="lblNoll"><option value="">Show the options on ride cards</option><option value="1"'+(S.settings.noll ? ' selected' : '')+'>Not using it: hide everywhere</option></select></div>'+
@@ -3838,6 +3847,7 @@ function renderAdd(){
   });
   var isWL = prefs.zone==='WL';
   var dfilt = (isPark && ui.type==='R') || (isRD && ui.type!=='B') || isWL, rfilt = isPark && ui.type==='A', sfilt = (isPark || isRD) && ui.type==='B';
+  if(isPark && groupStyle()) th += '<span class="wlbreak"></span><button class="type" data-act="fitonly" aria-pressed="'+(!!prefs.fitOnly)+'">Best for '+esc(PACES[groupStyle()][0].replace(/ and their grown-ups| and families|Families with |All /g,'').toLowerCase())+'</button>';
   if(rfilt) th += rideFilterChips();
   if(isWL){
     var wlz = WL_WHERE[prefs.wlz] ? prefs.wlz : '';
@@ -3884,13 +3894,14 @@ function renderAdd(){
     if(sfilt && (p.t==='B' || p.sh) && shopHidden(p)) return;
     if(dfilt && p.t==='R' && (diningHidden(p.name, p.z) || !dietMatch(p))) return;
     if(rfilt && rideHidden(p)) return;
+    if(isPark && prefs.fitOnly && groupStyle() && p.t!=='W' && p.t!=='G' && !groupFit(p)) return;
     if(q && p.name.toLowerCase().indexOf(q)<0 && (p.at||'').toLowerCase().indexOf(q)<0) return;
     shown++;
     if(isWL && !WL_WHERE[prefs.wlz] && p.z!==lastWZ){ lastWZ = p.z; lastWL = null; h += '<li class="wlhead">'+esc(WL_WHERE[p.z]||'')+'</li>'; }
     if(isWL){ var wl = hasWalkup(p.name, p.z); if(wl!==lastWL){ lastWL = wl; h += '<li class="wlsub">'+(wl ? 'On Disney’s walk-up list' : 'Other table service · walk in at the podium')+'</li>'; } }
     var tp = typeOf(p), c = inDay[p.z+'|'+p.name], isHome = p.t==='H' && homes.indexOf(p.name)>=0;
     h += '<li class="res"><div><div class="rname">'+esc(p.name)+'</div><div class="rmeta"><span class="tag '+tp[1]+'">'+esc(tp[0])+'</span>'+
-      (p.note ? '<span>'+esc(p.note)+'</span>' : '')+(p.ap ? '<span>approximate pin</span>' : '')+(kidSpot(p) ? '<span class="kidtip">🛝 '+esc(kidSpot(p))+'</span>' : '')+
+      (p.note ? '<span>'+esc(p.note)+'</span>' : '')+(p.ap ? '<span>approximate pin</span>' : '')+(groupFit(p) ? '<span class="fitbadge">✓ '+esc(groupFit(p))+'</span>' : '')+(kidSpot(p) ? '<span class="kidtip">🛝 '+esc(kidSpot(p))+'</span>' : '')+
       (p.t==='R' && !isBooth(p.name, p.z) && KIND_LABEL[diningKind(p.name, p.z)] ? '<span>'+KIND_LABEL[diningKind(p.name, p.z)]+'</span>' : '')+
       (p.t==='R' ? spans(walkBits(p).concat(cartWords(p)).concat(dietWords(p))) : '')+(isWL && !walkBits(p).length ? walkHow(p) : '')+
       ((p.t==='A' || p.t==='S') ? spans(rideFacts(p).concat(liveBits(p)).concat(id && !(id===todayId() && liveOf(p) && liveOf(p).recent && liveOf(p).w!=null) ? typRangeWords(p, id) : [])) : '')+
@@ -3930,7 +3941,7 @@ document.getElementById('app').addEventListener('click', function(ev){
   var act = b.dataset.act, id = curDayId(), day = id ? S.days[id] : null, i, p;
   // Someone following a shared trip can always look around, and can arrange and tick off stops once they use their own order.
   var mine = usingMine(id), o = mine ? mineAll[mineKey(id)] : null, cur;
-  if(isRO() && !{raall:1,openweb:1,tripcode:1,linkdismiss:1,pane:1,day:1,zone:1,type:1,maps:1,gomode:1,scope:1,order:1,dfilter:1,wlz:1,wlonly:1,skstay:1,rrfind:1,rrcomp:1,rfilter:1,refreshlive:1,dietopen:1,diet:1,fav:1,got:1,foodstar:1,dropevery:1,dropgone:1,calzip:1,pfav:1,chpick:1,chask:1,favonly:1,tfollow:1,view:1,cardsall:1,sopen:1,showmap:1,showdone:1,tonext:1,undo:1}[act] && !(mine && {done:1,toggle:1,up:1,down:1,reset:1,optimize:1,meal:1,mealdur:1,mealclose:1,mealforce:1,hop:1,fillkind:1,add:1,addname:1,add2:1,quickadd:1,mealadd:1,rradd:1,rm:1,cleartime:1,sort:1,calzip:1,rainswap:1,wayadd:1}[act])) return;
+  if(isRO() && !{fitonly:1,raall:1,openweb:1,tripcode:1,linkdismiss:1,pane:1,day:1,zone:1,type:1,maps:1,gomode:1,scope:1,order:1,dfilter:1,wlz:1,wlonly:1,skstay:1,rrfind:1,rrcomp:1,rfilter:1,refreshlive:1,dietopen:1,diet:1,fav:1,got:1,foodstar:1,dropevery:1,dropgone:1,calzip:1,pfav:1,chpick:1,chask:1,favonly:1,tfollow:1,view:1,cardsall:1,sopen:1,showmap:1,showdone:1,tonext:1,undo:1}[act] && !(mine && {done:1,toggle:1,up:1,down:1,reset:1,optimize:1,meal:1,mealdur:1,mealclose:1,mealforce:1,hop:1,fillkind:1,add:1,addname:1,add2:1,quickadd:1,mealadd:1,rradd:1,rm:1,cleartime:1,sort:1,calzip:1,rainswap:1,wayadd:1}[act])) return;
   if(mine && day && {raadd:1,add:1,addname:1,add2:1,quickadd:1,mealadd:1,rradd:1,rm:1,cleartime:1,sort:1,rainswap:1,wayadd:1}[act]){
     if(act==='cleartime' && !isOwnStop(id, {id:b.dataset.id})) return;
     day = mineProxy = {stops: displayed(id).map(function(s){ return Object.assign({}, s); }), mode:'custom', __mine:id};
@@ -3942,6 +3953,7 @@ document.getElementById('app').addEventListener('click', function(ev){
     case 'cardsall': prefs.cardsOpen = !prefs.cardsOpen; ui.openStop = {}; savePrefs(); renderDay(); break;
     case 'sopen': ui.openStop = ui.openStop || {}; ui.openStop[b.dataset.id] = !ui.openStop[b.dataset.id]; renderDay(); break;
     case 'showmap': ui.showMap = !ui.showMap; renderDay(); break;
+    case 'fitonly': prefs.fitOnly = !prefs.fitOnly; savePrefs(); renderAdd(); break;
     case 'raall': ui.raR = b.dataset.r; prefs.zone = 'RA'; prefs.pane = 'add'; ui.q = ''; savePrefs(); applyPane(); renderAdd(); break;
     case 'raadd':
       (function(){
@@ -4746,7 +4758,29 @@ function raSpot(resort, where, name){
   return resortSpot(resort);
 }
 /* Play spots for little ones, where the wait itself is the fun. Dumbo's indoor queue: tested by this family, Oct 19, 2026. */
-var KID_SPOTS = {'MK|Dumbo the Flying Elephant':'Big Top play area in the queue: an air-conditioned circus tent with a toddler area (about ages 1 to 3) in the center ring and climbing structures and slides for older kids, with seats for parents'};
+var KID_SPOTS = {'MK|Dumbo the Flying Elephant':'Big Top play area in the queue: an air-conditioned circus tent with a toddler area (about ages 1 to 3) in the center ring and climbing structures and slides for older kids, with seats for parents',
+  "MK|Casey Jr. Splash 'N' Soak Station":'Splash pad: circus-train animals spray water. Bring a change of clothes (and a swim diaper for little ones)',
+  'MK|The Many Adventures of Winnie the Pooh':'Interactive queue with hands-on things to play with in the Hundred Acre Wood while you wait',
+  'EP|Advanced Training Lab':'Indoor, air-conditioned play area and games inside the Mission: Space building',
+  'EP|ImageWorks - The "What If" Labs':'Indoor, air-conditioned hands-on play area at the end of Journey Into Imagination, where Figment meets guests',
+  'AK|Wilderness Explorers':'Badge activities at stations all over the park: a gentle way for young kids to explore at their own speed'};
+/* Fit for the group you chose under Who's going: a short badge on the places that suit it, from the ride facts
+   (height, thrills, drops, darkness, spinning), indoor seated shows, play spots and bars. */
+function groupStyle(){ return (S.settings && S.settings.pace) || ''; }
+// Sit-down, air-conditioned theater shows: a real break for tired feet, naps in a stroller and grandparents.
+var SEATED_AC = /PhilharMagic|Carousel of Progress|Hall of Presidents|Enchanted Tiki Room|Country Bear|Laugh Floor|Far and Wide|Impressions de France|American Adventure|Reflections of China|Turtle Talk|Short Film Festival|Awesome Planet|Mickey Mouse Clubhouse Live|The Little Mermaid - A Musical|First Time in Forever|Festival of the Lion King|Big Blue\.\.\. and Beyond|Better Zoogether/i;
+function seatedShow(p){ return !!PARKS[p.z] && (p.t==='S' || p.t==='A') && SEATED_AC.test(p.name); }
+function groupFit(p){
+  var g = groupStyle(); if(!g || !PARKS[p.z]) return '';
+  var i = p.t==='A' ? info(p) : null, h = i ? i[0] : null, n = i ? i[1] : '';
+  if(/ at Mickey's (Not-So-Scary|Very Merry)| at Disney After Hours/.test(p.name)) return '';   // party-only
+  if(g==='littles'){ if(kidSpot(p)) return 'Play spot for little ones'; if(seatedShow(p)) return 'Seated, air-conditioned break'; if(i && !h && !/[TBC]/.test(n)) return 'Good for little ones'; return ''; }
+  if(g==='kids'){ if(kidSpot(p)) return 'Play spot for kids'; if(i && (h||0) <= 40 && !/[TB]/.test(n)) return 'Good for young kids'+(h ? ' ('+h+' in and up)' : ''); if(seatedShow(p)) return 'Seated, air-conditioned break'; return ''; }
+  if(g==='teens'){ if(i && /[TB]/.test(n)) return 'Teen favorite: thrills'; if(i && /[sDP]/.test(n) && (h||0) >= 38) return 'Good for teens'; return ''; }
+  if(g==='adults'){ if(i && /[TB]/.test(n)) return 'Thrills'; if(p.t==='R' && diningKind(p.name, p.z)==='bar') return 'Bar or lounge'; return ''; }
+  if(g==='multi'){ if(seatedShow(p)) return 'Seated, air-conditioned'; if(i && !h && !/[TBP]/.test(n) && p.name!=="Casey Jr. Splash 'N' Soak Station") return 'Easy for all ages'; return ''; }
+  return '';
+}
 function kidSpot(p){ return KID_SPOTS[p.z+'|'+p.name] || ''; }
 /* ---------- resort activities ----------
    Every Disney resort's recreation schedule (campfires, movies under the stars, pool parties, crafts, rentals, pools),
