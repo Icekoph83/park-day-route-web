@@ -3986,18 +3986,18 @@ function renderAdd(){
     var p = list[i];
     if(isWL && WL_WHERE[prefs.wlz] && p.z!==prefs.wlz) return;
     if(isWL && prefs.wlOnly && !hasWalkup(p.name, p.z)) return;
-    if((isPark || isRD) && ui.type!=='all' && p.t!==ui.type && !(ui.type==='B' && p.sh) && !(p.t==='G' && !q && !(sfilt && ui.sell))) return;
-    if(sfilt && (p.t==='B' || p.sh) && shopHidden(p)) return;
-    if(dfilt && p.t==='R' && (diningHidden(p.name, p.z) || !dietMatch(p))) return;
-    if(rfilt && rideHidden(p)) return;
-    if(isPark && prefs.fitOnly && groupStyle() && p.t!=='W' && p.t!=='G' && !groupFitAll(p)) return;
+    // Searching for a place by its own name finds it even when a filter would hide it, and says so.
+    var nameHit = q.length >= 3 && p.name.toLowerCase().indexOf(q)>=0, filtered = false;
+    if((isPark || isRD) && ui.type!=='all' && p.t!==ui.type && !(ui.type==='B' && p.sh) && !(p.t==='G' && !q && !(sfilt && ui.sell))){ if(!nameHit) return; filtered = true; }
+    if((sfilt && (p.t==='B' || p.sh) && shopHidden(p)) || (dfilt && p.t==='R' && (diningHidden(p.name, p.z) || !dietMatch(p))) || (rfilt && rideHidden(p)) ||
+       (isPark && prefs.fitOnly && groupStyle() && p.t!=='W' && p.t!=='G' && !groupFitAll(p))){ if(!nameHit) return; filtered = true; }
     if(q && p.name.toLowerCase().indexOf(q)<0 && (p.at||'').toLowerCase().indexOf(q)<0) return;
     shown++;
     if(isWL && !WL_WHERE[prefs.wlz] && p.z!==lastWZ){ lastWZ = p.z; lastWL = null; h += '<li class="wlhead">'+esc(WL_WHERE[p.z]||'')+'</li>'; }
     if(isWL){ var wl = hasWalkup(p.name, p.z); if(wl!==lastWL){ lastWL = wl; h += '<li class="wlsub">'+(wl ? 'On Disney’s walk-up list' : 'Other table service · walk in at the podium')+'</li>'; } }
     var tp = typeOf(p), c = inDay[p.z+'|'+p.name], isHome = p.t==='H' && homes.indexOf(p.name)>=0;
     h += '<li class="res"><div><div class="rname">'+esc(p.name)+'</div><div class="rmeta"><span class="tag '+tp[1]+'">'+esc(tp[0])+'</span>'+
-      (p.note ? '<span>'+esc(p.note)+'</span>' : '')+(p.ap ? '<span>approximate pin</span>' : '')+(groupFit(p) ? '<span class="fitbadge">✓ '+esc(groupFit(p))+'</span>' : '')+(kidSpot(p) ? '<span class="kidtip">🛝 '+esc(kidSpot(p))+'</span>' : '')+
+      (p.note ? '<span>'+esc(p.note)+'</span>' : '')+(p.ap ? '<span>approximate pin</span>' : '')+(filtered ? '<span class="warn">hidden by your filters</span>' : '')+(groupFit(p) ? '<span class="fitbadge">✓ '+esc(groupFit(p))+'</span>' : '')+(kidSpot(p) ? '<span class="kidtip">🛝 '+esc(kidSpot(p))+'</span>' : '')+
       (p.t==='R' && !isBooth(p.name, p.z) && KIND_LABEL[diningKind(p.name, p.z)] ? '<span>'+KIND_LABEL[diningKind(p.name, p.z)]+'</span>' : '')+
       (p.t==='R' ? spans(walkBits(p).concat(cartWords(p)).concat(dietWords(p))) : '')+(isWL && !walkBits(p).length ? walkHow(p) : '')+
       ((p.t==='A' || p.t==='S') ? spans(rideFacts(p).concat(liveBits(p)).concat(id && !(id===todayId() && liveOf(p) && liveOf(p).recent && liveOf(p).w!=null) ? typRangeWords(p, id) : [])) : '')+
