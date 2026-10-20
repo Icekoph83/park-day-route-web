@@ -779,6 +779,12 @@ function outlook(id, st){
     if(tDay.length) pl.push('The Disney app can save where you parked');
     items.push('<li><strong>Parking:</strong> '+esc(pl.join('. '))+'.</li>');
   }
+  if(tDay.indexOf('MK')>=0 && stayMode(pStay)===''){
+    var myR = pStay && MK_GATES[pStay.r] ? shortResort(pStay.r) : '';
+    items.push('<li><strong>Magic Kingdom bus stop:</strong> '+(myR ? 'buses back to '+esc(myR)+' leave from <strong>gate '+MK_GATES[pStay.r]+'</strong>. ' : '')+
+      '<details class="mkgates"><summary>All gates</summary><p class="note">'+MK_GATE_LIST.map(function(g){ return esc(g[0])+' '+g[1]; }).join(' · ')+
+      '. Contemporary, Grand Floridian, Polynesian and the Transportation and Ticket Center are by monorail or boat. From the sign at the bus stop, October 2026; check it in case a gate moves.</p></details></li>');
+  }
   var others = parks.filter(function(k){ return inDay.indexOf(k)<0; }).map(function(k){ var c = calDay(k, id); return c && c.crowd!=null ? esc(PARKS[k].name)+' '+c.crowd : ''; }).filter(Boolean);
   if(others.length) items.push('<li>'+(inDay.length ? 'Other parks, crowd forecast of 100: ' : 'Crowd forecast of 100: ')+others.join(' · ')+'.</li>');
   if(!inDay.length && others.length) head.push('crowd forecasts');
@@ -1221,6 +1227,31 @@ function zoneName(s){
   if(s.z==='RD') return s.at ? 'at '+shortResort(s.at) : 'Resort area';
   var z = ZNAME[s.z]||''; return (s.t==='H' || z===s.name) ? '' : z;
 }
+/* Magic Kingdom bus stop gates, read from the Bus Directory sign at the Magic Kingdom bus stop (Oct 2026). Gates can be
+   moved, so the sign there has the last word. Contemporary, Grand Floridian and Polynesian go by monorail or boat,
+   and the Transportation and Ticket Center by monorail or ferry. */
+var MK_GATES = {"Disney's All-Star Movies Resort":28, "Disney's All-Star Music Resort":30, "Disney's All-Star Sports Resort":32,
+  "Disney's Animal Kingdom Lodge":16, "Disney's Animal Kingdom Villas - Kidani Village":16, "Disney's Art of Animation Resort":22,
+  "Disney's BoardWalk Inn":14, "Disney's BoardWalk Villas":14, "Disney's Caribbean Beach Resort":24, "Disney's Coronado Springs Resort":11,
+  "Disney's Fort Wilderness Resort & Campground":10, "Disney's Wilderness Lodge":10, "Disney's Old Key West Resort":13,
+  "Disney's Pop Century Resort":26, "Disney's Port Orleans Resort - French Quarter":18, "Disney's Port Orleans Resort - Riverside":20,
+  "Disney's Riviera Resort":12, "Disney's Saratoga Springs Resort & Spa":17, "Disney's Yacht Club Resort":15, "Disney's Beach Club Resort":15};
+var MK_GATE_LIST = [['All-Star Movies',28],['All-Star Music',30],['All-Star Sports',32],['Animal Kingdom Lodge',16],['Art of Animation',22],['BoardWalk',14],
+  ['Caribbean Beach',24],['Coronado Springs',11],['Fort Wilderness',10],['Wilderness Lodge',10],['Old Key West',13],['Pop Century',26],
+  ['Port Orleans French Quarter',18],['Port Orleans Riverside',20],['Riviera',12],['Saratoga Springs',17],['Yacht & Beach Club',15],
+  ['Animal Kingdom (park, after 10 a.m.)',8],['Hollywood Studios (park, after 10 a.m.)',6],['Golden Oak',1],['Minnie Van (Lyft)',2]];
+var MK_PARK_GATES = {AK:8, HS:6};
+// The gate to stand at for a bus that leaves Magic Kingdom toward stop b, or '' when there is none on the sign.
+function mkGateFor(b){
+  if(!b) return null;
+  if(PARKS[b.z] && MK_PARK_GATES[b.z] && !resortOf(b)) return {g:MK_PARK_GATES[b.z], to:PARKS[b.z].name, late:1};
+  var r = resortOf(b); return r && MK_GATES[r] ? {g:MK_GATES[r], to:shortResort(r)} : null;
+}
+function mkGateNote(a, b){
+  if(a.z==='MK' && b.z!=='MK'){ var g = mkGateFor(b); if(g) return 'At the Magic Kingdom bus stop, the '+g.to+' bus leaves from gate '+g.g+(g.late ? ' (from 10 a.m.)' : ''); }
+  if(b.z==='MK' && a.z!=='MK'){ var h = mkGateFor(a); if(h) return 'Going back, the '+h.to+' bus leaves Magic Kingdom from gate '+h.g+(h.late ? ' (from 10 a.m.)' : ''); }
+  return '';
+}
 function resortOf(s){ return s.t==='H' ? s.name : (s.at||''); }
 function area(s){ if(PARKS[s.z]) return s.z; var r = resortOf(s); return r ? 'R:'+r : ''; }
 function rowFor(n){ for(var i=0;i<RESORTS.length;i++) if(RESORTS[i][0]===n) return RESORTS[i]; return null; }
@@ -1331,6 +1362,7 @@ function leg(a,b){
          : k.indexOf('DS')>=0 ? 'Usually by bus or car'
          : 'Usually by bus';
   } else note = 'By Disney transport or car';
+  if(ui.dayBy!=='d' && (!m || m.indexOf('B')>=0)){ var gn = mkGateNote(a, b); if(gn) note += '. '+gn; }
   return {kind:'transfer', note:note, modes:m||''};
 }
 function dest(s){ return s.lat!=null ? (s.lat+','+s.lng) : (offAddr(s) || s.q || s.name); }
