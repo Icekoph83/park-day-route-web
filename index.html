@@ -779,12 +779,13 @@ function outlook(id, st){
     if(tDay.length) pl.push('The Disney app can save where you parked');
     items.push('<li><strong>Parking:</strong> '+esc(pl.join('. '))+'.</li>');
   }
-  if(tDay.indexOf('MK')>=0 && stayMode(pStay)===''){
-    var myR = pStay && MK_GATES[pStay.r] ? shortResort(pStay.r) : '';
-    items.push('<li><strong>Magic Kingdom bus stop:</strong> '+(myR ? 'buses back to '+esc(myR)+' leave from <strong>gate '+MK_GATES[pStay.r]+'</strong>. ' : '')+
-      '<details class="mkgates"><summary>All gates</summary><p class="note">'+MK_GATE_LIST.map(function(g){ return esc(g[0])+' '+g[1]; }).join(' · ')+
-      '. Contemporary, Grand Floridian, Polynesian and the Transportation and Ticket Center are by monorail or boat. From the sign at the bus stop, October 2026; check it in case a gate moves.</p></details></li>');
-  }
+  if(stayMode(pStay)==='') tDay.forEach(function(z){
+    var G = PARK_GATES[z]; if(!G) return;
+    var r = pStay && pStay.r, g = r && G.resorts[r], o = r && G.other[r];
+    items.push('<li><strong>'+esc(G.name)+' bus stop:</strong> '+(g ? 'buses back to '+esc(shortResort(r))+' leave from <strong>gate '+g+'</strong>. ' : o ? esc(shortResort(r))+' is by '+esc(o)+' from here, not bus. ' : '')+
+      '<details class="mkgates"><summary>All gates</summary><p class="note">'+G.list.map(function(x){ return esc(x[0])+' '+x[1]; }).join(' · ')+
+      '. '+esc(G.otherNote)+'. From the sign at the bus stop, October 2026; check it in case a gate moves.</p></details></li>');
+  });
   var others = parks.filter(function(k){ return inDay.indexOf(k)<0; }).map(function(k){ var c = calDay(k, id); return c && c.crowd!=null ? esc(PARKS[k].name)+' '+c.crowd : ''; }).filter(Boolean);
   if(others.length) items.push('<li>'+(inDay.length ? 'Other parks, crowd forecast of 100: ' : 'Crowd forecast of 100: ')+others.join(' · ')+'.</li>');
   if(!inDay.length && others.length) head.push('crowd forecasts');
@@ -1227,29 +1228,48 @@ function zoneName(s){
   if(s.z==='RD') return s.at ? 'at '+shortResort(s.at) : 'Resort area';
   var z = ZNAME[s.z]||''; return (s.t==='H' || z===s.name) ? '' : z;
 }
-/* Magic Kingdom bus stop gates, read from the Bus Directory sign at the Magic Kingdom bus stop (Oct 2026). Gates can be
-   moved, so the sign there has the last word. Contemporary, Grand Floridian and Polynesian go by monorail or boat,
-   and the Transportation and Ticket Center by monorail or ferry. */
-var MK_GATES = {"Disney's All-Star Movies Resort":28, "Disney's All-Star Music Resort":30, "Disney's All-Star Sports Resort":32,
-  "Disney's Animal Kingdom Lodge":16, "Disney's Animal Kingdom Villas - Kidani Village":16, "Disney's Art of Animation Resort":22,
-  "Disney's BoardWalk Inn":14, "Disney's BoardWalk Villas":14, "Disney's Caribbean Beach Resort":24, "Disney's Coronado Springs Resort":11,
-  "Disney's Fort Wilderness Resort & Campground":10, "Disney's Wilderness Lodge":10, "Disney's Old Key West Resort":13,
-  "Disney's Pop Century Resort":26, "Disney's Port Orleans Resort - French Quarter":18, "Disney's Port Orleans Resort - Riverside":20,
-  "Disney's Riviera Resort":12, "Disney's Saratoga Springs Resort & Spa":17, "Disney's Yacht Club Resort":15, "Disney's Beach Club Resort":15};
-var MK_GATE_LIST = [['All-Star Movies',28],['All-Star Music',30],['All-Star Sports',32],['Animal Kingdom Lodge',16],['Art of Animation',22],['BoardWalk',14],
-  ['Caribbean Beach',24],['Coronado Springs',11],['Fort Wilderness',10],['Wilderness Lodge',10],['Old Key West',13],['Pop Century',26],
-  ['Port Orleans French Quarter',18],['Port Orleans Riverside',20],['Riviera',12],['Saratoga Springs',17],['Yacht & Beach Club',15],
-  ['Animal Kingdom (park, after 10 a.m.)',8],['Hollywood Studios (park, after 10 a.m.)',6],['Golden Oak',1],['Minnie Van (Lyft)',2]];
-var MK_PARK_GATES = {AK:8, HS:6};
-// The gate to stand at for a bus that leaves Magic Kingdom toward stop b, or '' when there is none on the sign.
-function mkGateFor(b){
-  if(!b) return null;
-  if(PARKS[b.z] && MK_PARK_GATES[b.z] && !resortOf(b)) return {g:MK_PARK_GATES[b.z], to:PARKS[b.z].name, late:1};
-  var r = resortOf(b); return r && MK_GATES[r] ? {g:MK_GATES[r], to:shortResort(r)} : null;
+/* Park bus stop gates, read from the Bus Directory signs at each park's bus stop (October 2026, photos from the trip).
+   Gates can be moved, so the sign there has the last word. For each park: the gate for each resort's bus, the gates
+   for buses to other parks (those run from 10 a.m.), the full sign as a list, the resorts reached another way from
+   there, and a line about them. */
+var PARK_GATES = {
+  MK:{name:'Magic Kingdom', resorts:{"Disney's All-Star Movies Resort":28, "Disney's All-Star Music Resort":30, "Disney's All-Star Sports Resort":32,
+      "Disney's Animal Kingdom Lodge":16, "Disney's Animal Kingdom Villas - Kidani Village":16, "Disney's Art of Animation Resort":22,
+      "Disney's BoardWalk Inn":14, "Disney's BoardWalk Villas":14, "Disney's Caribbean Beach Resort":24, "Disney's Coronado Springs Resort":11,
+      "Disney's Fort Wilderness Resort & Campground":10, "Disney's Wilderness Lodge":10, "Disney's Old Key West Resort":13,
+      "Disney's Pop Century Resort":26, "Disney's Port Orleans Resort - French Quarter":18, "Disney's Port Orleans Resort - Riverside":20,
+      "Disney's Riviera Resort":12, "Disney's Saratoga Springs Resort & Spa":17, "Disney's Yacht Club Resort":15, "Disney's Beach Club Resort":15},
+    parks:{AK:8, HS:6},
+    list:[['All-Star Movies',28],['All-Star Music',30],['All-Star Sports',32],['Animal Kingdom Lodge',16],['Art of Animation',22],['BoardWalk',14],
+      ['Caribbean Beach',24],['Coronado Springs',11],['Fort Wilderness',10],['Wilderness Lodge',10],['Old Key West',13],['Pop Century',26],
+      ['Port Orleans French Quarter',18],['Port Orleans Riverside',20],['Riviera',12],['Saratoga Springs',17],['Yacht & Beach Club',15],
+      ['Animal Kingdom (park, after 10 a.m.)',8],['Hollywood Studios (park, after 10 a.m.)',6],['Golden Oak',1],['Minnie Van (Lyft)',2]],
+    other:{}, otherNote:'Contemporary, Grand Floridian, Polynesian and the Transportation and Ticket Center are by monorail or boat'},
+  HS:{name:'Hollywood Studios', resorts:{"Disney's All-Star Movies Resort":20, "Disney's All-Star Music Resort":22, "Disney's All-Star Sports Resort":24,
+      "Disney's Animal Kingdom Lodge":10, "Disney's Animal Kingdom Villas - Kidani Village":10, "Disney's Contemporary Resort":4,
+      "Disney's Coronado Springs Resort":12, "Disney's Fort Wilderness Resort & Campground":8, "Disney's Grand Floridian Resort & Spa":6,
+      "Disney's Old Key West Resort":14, "Disney's Polynesian Village Resort":4, "Disney's Port Orleans Resort - Riverside":16,
+      "Disney's Port Orleans Resort - French Quarter":18, "Disney's Saratoga Springs Resort & Spa":28, "Disney's Wilderness Lodge":8},
+    parks:{AK:34, EP:32, MK:36},
+    list:[['All-Star Movies',20],['All-Star Music',22],['All-Star Sports',24],['Animal Kingdom Lodge (Jambo and Kidani)',10],['Contemporary',4],
+      ['Coronado Springs',12],['Fort Wilderness',8],['Grand Floridian',6],['Old Key West',14],['Polynesian',4],['Port Orleans Riverside',16],
+      ['Port Orleans French Quarter',18],['Saratoga Springs',28],['Wilderness Lodge',8],['Shades of Green',60],['Golden Oak',61],
+      ['Animal Kingdom (park, after 10 a.m.)',34],['EPCOT (park, after 10 a.m.)',32],['Magic Kingdom (park, after 10 a.m.)',36],
+      ['DVC tour pickup',59],['Minnie Van (Lyft)',30],['Taxi',50],['Rideshare (Lyft)','51–58']],
+    other:{"Disney's Art of Animation Resort":'Skyliner', "Disney's Caribbean Beach Resort":'Skyliner', "Disney's Pop Century Resort":'Skyliner', "Disney's Riviera Resort":'Skyliner',
+      "Disney's BoardWalk Inn":'boat', "Disney's BoardWalk Villas":'boat', "Disney's Yacht Club Resort":'boat', "Disney's Beach Club Resort":'boat',
+      "Walt Disney World Swan":'boat', "Walt Disney World Dolphin":'boat', "Walt Disney World Swan Reserve":'boat'},
+    otherNote:'Art of Animation, Caribbean Beach, Pop Century and Riviera are by Skyliner; BoardWalk, Yacht & Beach Club and Swan & Dolphin by boat (or the walkway to EPCOT). Disney Springs: change at any resort'}
+};
+// The gate to stand at, at park z, for a bus toward stop b; null when the sign has none.
+function parkGateFor(z, b){
+  var G = PARK_GATES[z]; if(!G || !b) return null;
+  if(PARKS[b.z] && G.parks[b.z] && !resortOf(b)) return {g:G.parks[b.z], to:PARKS[b.z].name, late:1};
+  var r = resortOf(b); return r && G.resorts[r] ? {g:G.resorts[r], to:shortResort(r)} : null;
 }
-function mkGateNote(a, b){
-  if(a.z==='MK' && b.z!=='MK'){ var g = mkGateFor(b); if(g) return 'At the Magic Kingdom bus stop, the '+g.to+' bus leaves from gate '+g.g+(g.late ? ' (from 10 a.m.)' : ''); }
-  if(b.z==='MK' && a.z!=='MK'){ var h = mkGateFor(a); if(h) return 'Going back, the '+h.to+' bus leaves Magic Kingdom from gate '+h.g+(h.late ? ' (from 10 a.m.)' : ''); }
+function parkGateNote(a, b){
+  if(a.z!==b.z && PARK_GATES[a.z]){ var g = parkGateFor(a.z, b); if(g) return 'At the '+PARK_GATES[a.z].name+' bus stop, the '+g.to+' bus leaves from gate '+g.g+(g.late ? ' (from 10 a.m.)' : ''); }
+  if(a.z!==b.z && PARK_GATES[b.z]){ var h = parkGateFor(b.z, a); if(h) return 'Going back, the '+h.to+' bus leaves '+PARK_GATES[b.z].name+' from gate '+h.g+(h.late ? ' (from 10 a.m.)' : ''); }
   return '';
 }
 function resortOf(s){ return s.t==='H' ? s.name : (s.at||''); }
@@ -1362,7 +1382,7 @@ function leg(a,b){
          : k.indexOf('DS')>=0 ? 'Usually by bus or car'
          : 'Usually by bus';
   } else note = 'By Disney transport or car';
-  if(ui.dayBy!=='d' && (!m || m.indexOf('B')>=0)){ var gn = mkGateNote(a, b); if(gn) note += '. '+gn; }
+  if(ui.dayBy!=='d' && (!m || m.indexOf('B')>=0)){ var gn = parkGateNote(a, b); if(gn) note += '. '+gn; }
   return {kind:'transfer', note:note, modes:m||''};
 }
 function dest(s){ return s.lat!=null ? (s.lat+','+s.lng) : (offAddr(s) || s.q || s.name); }
