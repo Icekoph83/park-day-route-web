@@ -1559,6 +1559,11 @@ var BREAK_MIN = 90, CHECK_MIN = 20, DAY_START = 9*60, LATE_W = 4, IDLE_W = 0.2, 
 /* A Lightning Lane return is a window, not a moment: an hour from the return time unless the card says otherwise.
    Anywhere inside it is on time; the plan only waits when it would arrive early and only counts lateness past its end. */
 var LL_WINDOW = 60;
+// Cast members at Lightning Lane entrances usually let you in for about 15 minutes after the window ends. Not a promise,
+// so the plan only counts lateness past that.
+var LL_GRACE = 15;
+// A squeeze smaller than this is not worth a warning: the times are rough to begin with.
+var LATE_SHOW = 10;
 function llEnd(x){
   if(!x.ll || !x.time) return '';
   var st = toMin(x.time), e = x.tend ? toMin(x.tend) : null;
@@ -1592,11 +1597,32 @@ function startFor(id, list){
   var st = id ? dayOpen(id, list) : DAY_START, live = false;
   list.forEach(function(s){ if(!s.done && s.time && toMin(s.time) < st) st = toMin(s.time); });
   if(id===todayId()){ var d = new Date(), now = d.getHours()*60 + d.getMinutes(); if(now > st){ st = now; live = true; } }
-  return {t:st, live:live, id:id};
+  return {t:st, live:live, id:id, k:id===todayId() ? learnedPace(id, list) : 1};
+}
+/* Learning the day's pace as you go. Each pair of stops ticked off one after the other today shows how long the
+   second really took (walk, line and ride) against what the plan allowed. When you have been quicker, the times ahead
+   shrink to match, down to two thirds of the plan; when slower, they stay as planned. Taps under 3 minutes apart
+   (ticking several off at once) or over 4 hours apart are left out, and a little made-up evidence at the planned pace
+   keeps one quick ride from swinging the whole day. */
+var LEARN_MIN = 0.65, LEARN_PRIOR = 40;
+function learnedPace(id, list){
+  var done = list.filter(function(s){ return s.done && s.doneAt > 1e9; }).sort(function(a,b){ return a.doneAt - b.doneAt; });
+  var A = 0, P = 0, n = 0;
+  for(var i=1;i<done.length;i++){
+    var a = done[i-1], b = done[i], gap = (b.doneAt - a.doneAt)/60000;
+    if(gap < 3 || gap > 240) continue;
+    var d0 = new Date(a.doneAt), t0 = d0.getHours()*60 + d0.getMinutes();
+    var hop = hopCost(a, b), pred = hop + dwell(b, true, false, t0 + hop, id);
+    if(b.time){ var tt = toMin(b.time); if(t0 + hop < tt) pred = (tt - t0) + dwell(b, true, false, tt, id); }
+    if(!(pred > 0)) continue;
+    A += gap; P += pred; n++;
+  }
+  if(!n) return 1;
+  return Math.max(LEARN_MIN, Math.min(1, (A + LEARN_PRIOR)/(P + LEARN_PRIOR)));
 }
 // Walk the clock along a route. Reaching a timed stop late counts as "late"; reaching it early counts as waiting.
 function simulate(full, origin, cs){
-  var start = cs.t, live = cs.live;
+  var start = cs.t, live = cs.live, k = cs.k || 1;
   // A day whose first stop is your hotel starts there, with or without a set time, not at a park gate.
   if(origin && origin.name==='@gate' && full.length && full[0].t==='H') origin = null;
   var clock = start, prev = origin || null, late = 0, idle = 0, wait = 0, at = [], lateAt = [], idleAt = [];
@@ -1605,15 +1631,15 @@ function simulate(full, origin, cs){
     var s = full[i], l = 0, w = 0;
     // Leaving the resort first thing: when planning ahead, the clock starts as you reach the first stop,
     // not as you set off. Once the day is under way the trip there takes real time.
-    if(prev && (live || !(i===first && prev.t==='H' && !prev.time))) clock += hopCost(prev, s);
-    if(s.time){ var tt = toMin(s.time), te = (s.ll && llEnd(s)) ? toMin(llEnd(s)) : tt;
+    if(prev && (live || !(i===first && prev.t==='H' && !prev.time))) clock += hopCost(prev, s)*k;
+    if(s.time){ var tt = toMin(s.time), te = (s.ll && llEnd(s)) ? toMin(llEnd(s)) + LL_GRACE : tt;
       if(clock > te){ l = clock - te; late += l; clock = te; } else if(clock < tt){ w = tt - clock; idle += w; clock = tt; } }
     else { var oa = opensAt(s, cs.id); if(oa!=null && clock < oa){ w = oa - clock; idle += w; clock = oa; }
       var sh = showTimes(s, cs.id), nx = (sh && sh.times.length) ? nextTime(sh.times, Math.ceil(clock)) : '';
       if(nx && toMin(nx) > clock){ w += toMin(nx) - clock; idle += toMin(nx) - clock; clock = toMin(nx); } }
     at.push(clock); lateAt.push(l); idleAt.push(w);
     var q = queueWait(s, live, clock, cs.id); if(q!=null) wait += q;
-    clock += dwell(s, i>0 && i<full.length-1, live, clock, cs.id);
+    clock += dwell(s, i>0 && i<full.length-1, live, clock, cs.id)*k;
     prev = s;
   }
   return {late:late, idle:idle, wait:wait, at:at, lateAt:lateAt, idleAt:idleAt};
@@ -3484,7 +3510,9 @@ function renderDay(){
       '<p class="meta">'+esc(tp[0])+(zn?' · '+esc(zn):'')+(s.time?' · '+esc(fmtTime(s.time)):'')+'</p>';
     if(s.note) h += '<p class="leg">'+(s.t==='W' ? '' : 'Where: ')+esc(s.t==='W' ? s.note.charAt(0).toUpperCase()+s.note.slice(1) : s.note)+'.</p>';
     h += nextFacts(s, id===todayId(), id, s.time ? toMin(s.time) : (clock[s.id] ? clock[s.id].at : null));
-    if(s.time && clock[s.id] && clock[s.id].late>=5) h += '<p class="leg">Tight: about '+(Math.round(clock[s.id].late/5)*5)+' min more is planned before this than fits.</p>';
+    var kNow = id===todayId() ? learnedPace(id, st) : 1;
+    if(kNow < 0.95) h += '<p class="note">You’ve been moving about '+Math.round((1-kNow)*100)+'% quicker than planned today, so the times ahead allow for that.</p>';
+    if(s.time && clock[s.id] && clock[s.id].late>=LATE_SHOW) h += '<p class="leg">Tight: about '+(Math.round(clock[s.id].late/5)*5)+' min more is planned before this than fits.</p>';
     var leaving = s.t==='H' && nextI===0 && !s.dur, first = leaving ? st[nextI+1] : null, L3 = first ? legs[nextI+1] : null;
     if(leaving && first){
       // Leaving the hotel: directions go to the first stop, by the way you choose, and starting the day ticks off the hotel.
@@ -3573,7 +3601,7 @@ function renderDay(){
           ((clock[x.id] && !x.done && eeRide(x) && dayEarly(id) && calDay(x.z, id) && calDay(x.z, id).open!=null && clock[x.id].at < calDay(x.z, id).open) ? '<span>runs during early entry</span>' : '')+
           spans(typBits(x, id, x.time ? toMin(x.time) : (clock[x.id] ? clock[x.id].at : null), id===todayId()))+
           closedBit(x, id, x.time ? toMin(x.time) : (clock[x.id] ? clock[x.id].at : null))+
-          (clock[x.id] && x.time && clock[x.id].late>=5 ? '<span class="warn">about '+(Math.round(clock[x.id].late/5)*5)+' min too much planned before this</span>' : '')+'</span>'+
+          (clock[x.id] && x.time && clock[x.id].late>=LATE_SHOW ? '<span class="warn">about '+(Math.round(clock[x.id].late/5)*5)+' min too much planned before this</span>' : '')+'</span>'+
         '<div class="ctl">'+((isRO() && !(mine && isOwnStop(id, x))) ? (x.time ? '<span class="tm">'+esc(fmtTime(x.time))+'</span>' : '')
           : (function(){
               var sh = showTimes(x, id);
