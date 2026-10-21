@@ -1259,12 +1259,26 @@ var PARK_GATES = {
     other:{"Disney's Art of Animation Resort":'Skyliner', "Disney's Caribbean Beach Resort":'Skyliner', "Disney's Pop Century Resort":'Skyliner', "Disney's Riviera Resort":'Skyliner',
       "Disney's BoardWalk Inn":'boat', "Disney's BoardWalk Villas":'boat', "Disney's Yacht Club Resort":'boat', "Disney's Beach Club Resort":'boat',
       "Walt Disney World Swan":'boat', "Walt Disney World Dolphin":'boat', "Walt Disney World Swan Reserve":'boat'},
-    otherNote:'Art of Animation, Caribbean Beach, Pop Century and Riviera are by Skyliner; BoardWalk, Yacht & Beach Club and Swan & Dolphin by boat (or the walkway to EPCOT). Disney Springs: change at any resort'}
+    otherNote:'Art of Animation, Caribbean Beach, Pop Century and Riviera are by Skyliner; BoardWalk, Yacht & Beach Club and Swan & Dolphin by boat (or the walkway to EPCOT). Disney Springs: change at any resort'},
+  AK:{name:'Animal Kingdom', resorts:{"Disney's All-Star Movies Resort":1, "Disney's All-Star Music Resort":2, "Disney's All-Star Sports Resort":3,
+      "Disney's Animal Kingdom Lodge":9, "Disney's Animal Kingdom Villas - Kidani Village":9, "Disney's Caribbean Beach Resort":5,
+      "Disney's Coronado Springs Resort":4, "Disney's Port Orleans Resort - Riverside":7, "Disney's BoardWalk Inn":20, "Disney's BoardWalk Villas":20,
+      "Disney's Contemporary Resort":22, "Disney's Fort Wilderness Resort & Campground":26, "Disney's Grand Floridian Resort & Spa":24,
+      "Disney's Old Key West Resort":18, "Disney's Polynesian Village Resort":22, "Disney's Port Orleans Resort - French Quarter":14,
+      "Disney's Riviera Resort":12, "Disney's Saratoga Springs Resort & Spa":16, "Disney's Wilderness Lodge":26, "Disney's Yacht Club Resort":20,
+      "Disney's Beach Club Resort":20, "Disney's Art of Animation Resort":27, "Disney's Pop Century Resort":28},
+    parks:{BB:11, EP:30, HS:31, MK:29}, early:{BB:1},
+    list:[['All-Star Movies',1],['All-Star Music',2],['All-Star Sports',3],['Coronado Springs',4],['Caribbean Beach',5],['Port Orleans Riverside',7],
+      ['Animal Kingdom Lodge (Jambo and Kidani)',9],['DVC tour pickup',10],['Minnie Van (Lyft)',10],['Blizzard Beach',11],['Riviera',12],
+      ['Port Orleans French Quarter',14],['Saratoga Springs',16],['Old Key West',18],['BoardWalk',20],['Yacht & Beach Club',20],['Contemporary',22],
+      ['Polynesian',22],['Grand Floridian',24],['Fort Wilderness',26],['Wilderness Lodge',26],['Art of Animation',27],['Pop Century',28],
+      ['Magic Kingdom (park, after 10 a.m.)',29],['EPCOT (park, after 10 a.m.)',30],['Hollywood Studios (park, after 10 a.m.)',31]],
+    other:{}, otherNote:'Facing the sign, gates 1–9 are to the left, 10–26 straight ahead and 27–31 to the right. Disney Springs: change at any resort'}
 };
 // The gate to stand at, at park z, for a bus toward stop b; null when the sign has none.
 function parkGateFor(z, b){
   var G = PARK_GATES[z]; if(!G || !b) return null;
-  if(PARKS[b.z] && G.parks[b.z] && !resortOf(b)) return {g:G.parks[b.z], to:PARKS[b.z].name, late:1};
+  if(PARKS[b.z] && G.parks[b.z] && !resortOf(b)) return {g:G.parks[b.z], to:PARKS[b.z].name, late:!(G.early && G.early[b.z])};
   var r = resortOf(b); return r && G.resorts[r] ? {g:G.resorts[r], to:shortResort(r)} : null;
 }
 function parkGateNote(a, b){
@@ -1371,6 +1385,9 @@ function leg(a,b){
   if(m) note = 'Usually '+modeWords(m);
   else if(PARKS[a.z] && PARKS[b.z] && ui.dayBy==='d'){
     note = 'By car: back to your car, about 15 min drive, and park again'+((a.z==='DS' || b.z==='DS') ? '' : '. Parking paid today is good at every park')+((a.z==='MK' || b.z==='MK') ? '. Magic Kingdom parking is at the Transportation and Ticket Center' : '');
+  }
+  else if(PARKS[a.z] && PARKS[b.z] && [a.z,b.z].sort().join('|')==='AK|BB'){
+    note = 'Usually by bus: Animal Kingdom and Blizzard Beach have a direct bus';
   }
   else if(PARKS[a.z] && PARKS[b.z] && (isWater(a.z) || isWater(b.z))){
     note = 'No direct Disney bus between parks and the water parks: ride to a resort and change there, or drive';
