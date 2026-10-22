@@ -512,6 +512,8 @@ var EXTRAS = {
     {t:'V', name:'First Aid', lat:28.37195, lng:-81.54774, note:'in the Odyssey building, with the Baby Care Center', nn:1},
     {t:'V', name:'Guest Relations', lat:28.37467, lng:-81.54872, note:'near Spaceship Earth'},
     {t:'V', name:'Stroller rentals', lat:28.37623, lng:-81.54940, note:'at the main entrance', ap:1, nn:1},
+    {t:'X', name:'FriendShip boat across World Showcase Lagoon', lat:28.37135, lng:-81.55065, ap:1, relax:1,
+      note:'a calm 10 minute ride across the lagoon, sitting down, in the shade. Boats link the Canada or Mexico dock (by World Showcase Plaza) with the Germany or Morocco dock, usually from about 11 AM to 7:30 PM; which docks are in use changes, so look for the one with a boat at it'},
     {t:'R', name:"Norway Snack Stand", lat:28.37060, lng:-81.54700, note:"Norway pavilion", ap:1, nn:1, cart:{"items": "Cold drinks, school bread, Trollkrem spiked frozen slush", "k": "s"}},
     {t:'R', name:"Germany Bier Hovels", lat:28.36825, lng:-81.54670, note:"Germany pavilion, kiosk", ap:1, nn:1, cart:{"items": "German beer and wine, soft pretzels", "k": "b"}},
     {t:'R', name:"Garden House sake stand", lat:28.36770, lng:-81.55030, note:"Japan pavilion, outdoor stand, no seating", ap:1, nn:1, cart:{"items": "Hot or cold sake and sake cocktails", "k": "b"}}
@@ -822,7 +824,7 @@ Object.keys(PARKS).forEach(function(k){
   (RAW.RR||'').split('\n').filter(Boolean).forEach(function(l){ var p = l.split('|'); if(p[0]!==k) return;
     list.push({z:k, t:'W', name:(/^near /.test(p[1]) ? 'Restrooms ' : 'Restrooms: ')+p[1], lat:+p[2], lng:+p[3], nn:1, comp:p[4],
       note:p[4]==='b' ? 'companion (family) restroom here too' : p[4]==='c' ? 'companion (family) restroom only' : ''}); });
-  (EXTRAS[k]||[]).forEach(function(e){ list.push({z:k,t:e.t,name:e.name,lat:e.lat,lng:e.lng,note:(e.baby ? (e.note ? e.note+' · ' : '')+BABY_NOTE : e.note||''),ap:e.ap||0,nn:e.nn||0,baby:e.baby||0}); if(e.cart) CARTS[k+'|'+e.name] = e.cart; });
+  (EXTRAS[k]||[]).forEach(function(e){ list.push({z:k,t:e.t,name:e.name,lat:e.lat,lng:e.lng,note:(e.baby ? (e.note ? e.note+' · ' : '')+BABY_NOTE : e.note||''),ap:e.ap||0,nn:e.nn||0,baby:e.baby||0,relax:e.relax||0}); if(e.cart) CARTS[k+'|'+e.name] = e.cart; });
   addShops(list, k);
   list.sort(function(a,b){ return sortKey(a.name).localeCompare(sortKey(b.name)); });
   if(PARKS[k].gate) list.unshift({z:k,t:'G',name:PARKS[k].name+' main entrance',lat:PARKS[k].gate[0],lng:PARKS[k].gate[1]});
@@ -1369,6 +1371,18 @@ function resortModes(a,b){
 // Watch) is reached only by the Wildlife Express Train from Harambe: about 12 min for the wait and ride, then a 5 min walk.
 var OUTLYING = {AK:{test:function(p){ return p.lat!=null && p.lat > 28.3620; }, station:{lat:28.35916, lng:-81.59137}, ride:12, walk:5, name:'the Wildlife Express Train'}};
 function outlying(p){ var o = OUTLYING[p.z]; return !!(o && o.test(p)); }
+/* EPCOT's FriendShip boats cross World Showcase Lagoon between the plaza docks (Canada, Mexico) and the far docks
+   (Germany, Morocco). Disney has moved the route between these docks over the years, so the note names the nearest
+   ones and says to look for the one in use. Pins are approximate. */
+var LAGOON_DOCKS = {near:[{n:'Canada',lat:28.37135,lng:-81.55065},{n:'Mexico',lat:28.37160,lng:-81.54860}], far:[{n:'Germany',lat:28.36880,lng:-81.54720},{n:'Morocco',lat:28.36905,lng:-81.55110}]};
+function nearDock(p, L){ var best = null, bd = 1e9; L.forEach(function(d){ var m = hav(p, d); if(m < bd){ bd = m; best = d; } }); return {d:best, m:bd}; }
+function lagoonBoat(a, b){
+  if(a.z!=='EP' || b.z!=='EP' || a.lat==null || b.lat==null) return '';
+  var an = nearDock(a, LAGOON_DOCKS.near), af = nearDock(a, LAGOON_DOCKS.far), bn = nearDock(b, LAGOON_DOCKS.near), bf = nearDock(b, LAGOON_DOCKS.far);
+  var x = (an.m < 220 && bf.m < 220) ? [an.d, bf.d] : (af.m < 220 && bn.m < 220) ? [af.d, bn.d] : null;
+  if(!x || hav(a, b) < 400) return '';
+  return 'or ride the FriendShip boat across the lagoon, from the '+x[0].n+' dock toward '+x[1].n+' (about 11 AM to 7:30 PM, docks in use vary)';
+}
 function leg(a,b){
   if(!a) return null;
   if(a.z===b.z && a.name===b.name) return null;
@@ -1377,7 +1391,7 @@ function leg(a,b){
     return {kind:'walk', min:w + o.ride, walk:w, via:o.name};
   }
   var both = a.lat!=null && b.lat!=null, ar = area(a), same = !!ar && ar===area(b);
-  if(both){ var d = hav(a,b); if(same || d<450) return {kind:'walk', min:Math.max(1, Math.round(d*1.35/pace()[1]))}; }
+  if(both){ var d = hav(a,b); if(same || d<450){ var bt = lagoonBoat(a, b), wl = {kind:'walk', min:Math.max(1, Math.round(d*1.35/pace()[1]))}; if(bt) wl.boat = bt; return wl; } }
   if(same) return {kind:'walk', min:null};
   var ch = carHop(a,b); if(ch) return {kind:'transfer', note:carNote(ch), modes:'', car:ch};
   var rp = resortHop(a,b); if(rp) return rp.kind==='walk' ? {kind:'walk', min:Math.max(1, Math.round(rp.min))} : {kind:'transfer', note:rp.note, modes:rp.modes};
@@ -3566,7 +3580,7 @@ function renderDay(){
     }
     else if(leaving) h += '<p class="leg">Your starting point for the day.</p>';
     else if(!L2) h += '<p class="leg">Directions start from wherever you are.</p>';
-    else if(L2.kind==='walk') h += '<p class="leg">'+(L2.via ? 'About '+L2.min+' min from '+esc(title(st[nextI-1],nextI-1,n))+', riding '+esc(L2.via)+' (it leaves from Harambe in Africa)' : (L2.min ? 'About '+L2.min+' min walk' : 'A short walk')+' from '+esc(title(st[nextI-1],nextI-1,n)))+'.</p>';
+    else if(L2.kind==='walk') h += '<p class="leg">'+(L2.via ? 'About '+L2.min+' min from '+esc(title(st[nextI-1],nextI-1,n))+', riding '+esc(L2.via)+' (it leaves from Harambe in Africa)' : (L2.min ? 'About '+L2.min+' min walk' : 'A short walk')+' from '+esc(title(st[nextI-1],nextI-1,n))+(L2.boat ? ', '+esc(L2.boat) : ''))+'.</p>';
     else h += '<p class="leg">Transfer from '+esc(title(st[nextI-1],nextI-1,n))+'. '+esc(L2.note)+'. Directions use the way you choose below; Disney’s buses, boats, Skyliner and monorail are not in maps apps, so for those, head to the stop and use the Disney app.</p>';
     if(!(leaving && first)){
     var prev2 = nextI>0 ? st[nextI-1] : null, far = !leaving && L2 && L2.kind==='transfer', gm2 = far ? goMode(L2, s.id, prev2) : 'w', toLot = far && gm2==='d' && PARKS[s.z], sky2 = gm2==='s' ? skyStation(prev2) : null;
@@ -3612,7 +3626,7 @@ function renderDay(){
       if(hideDone && x.done) continue;
       if(Lg && !(hideDone && st[i-1] && st[i-1].done)){
         h += '<li class="legrow'+(Lg.kind==='transfer'?' is-transfer':'')+'"><span>'+
-          (Lg.kind==='walk' ? (Lg.via ? 'About '+Lg.min+' min by '+esc(Lg.via) : Lg.min ? 'About '+Lg.min+' min walk' : 'Short walk') : '<strong>Transfer.</strong> '+esc(Lg.note))+'</span></li>';
+          (Lg.kind==='walk' ? (Lg.via ? 'About '+Lg.min+' min by '+esc(Lg.via) : (Lg.min ? 'About '+Lg.min+' min walk' : 'Short walk')+(Lg.boat ? ', '+esc(Lg.boat) : '')) : '<strong>Transfer.</strong> '+esc(Lg.note))+'</span></li>';
       } else if(i>0) h += '<li class="legrow"><span></span></li>';
       h += '<li class="stop'+(x.done?' is-done':'')+(i===nextI?' is-next':'')+(open ? '' : ' is-closed')+'" id="stop-'+x.id+'"><span class="num">'+(i+1)+'</span><div class="body">'+
         '<div class="stophead"><button class="sopen" data-act="sopen" data-id="'+x.id+'" aria-expanded="'+open+'"><span class="name">'+esc(title(x,i,n))+'</span>'+
@@ -4935,6 +4949,8 @@ function familyIdeas(id, st){
     if(ref) shows.sort(function(a, b){ return hav(ref, a) - hav(ref, b); });
     if(shows.length) body += '<li>Or a stroller nap in the cool and dark of a seated show: '+shows.slice(0,3).map(function(p){ return esc(p.name)+walk(p)+' '+addBtn(p); }).join('; ')+'</li>';
     var spots = []; zs.forEach(function(z){ PLACES[z].forEach(function(p){ if(kidSpot(p)) spots.push(p); }); });
+    var calm = []; zs.forEach(function(z){ PLACES[z].forEach(function(p){ if(p.relax) calm.push(p); }); });
+    if(calm.length) body += '<li>A calm sit-down break: '+calm.map(function(p){ return esc(p.name)+walk(p)+' '+addBtn(p); }).join('; ')+'. Gentle rocking and a breeze often put little ones to sleep.</li>';
     if(spots.length) body += '<li>Play spots: '+spots.map(function(p){ return esc(p.name)+walk(p)+' '+addBtn(p); }).join('; ')+'</li>';
     var bc = []; zs.forEach(function(z){ PLACES[z].forEach(function(p){ if(p.baby) bc.push(p); }); });
     if(bc.length) body += '<li>'+bc.map(function(p){ return esc(p.name)+(p.note ? ' ('+esc(p.note.split(' · ')[0])+')' : ''); }).join('; ')+': a quiet, air-conditioned room to feed, change and rest.</li>';
