@@ -4018,11 +4018,11 @@ function renderAdd(){
     if(isWL && WL_WHERE[prefs.wlz] && p.z!==prefs.wlz) return;
     if(isWL && prefs.wlOnly && !hasWalkup(p.name, p.z)) return;
     // Searching for a place by its own name finds it even when a filter would hide it, and says so.
-    var nameHit = q.length >= 3 && p.name.toLowerCase().indexOf(q)>=0, filtered = false;
+    var nameHit = q.length >= 3 && (p.name.toLowerCase().indexOf(q)>=0 || aliasHit(p, q)), filtered = false;
     if((isPark || isRD) && ui.type!=='all' && p.t!==ui.type && !(ui.type==='B' && p.sh) && !(p.t==='G' && !q && !(sfilt && ui.sell))){ if(!nameHit) return; filtered = true; }
     if((sfilt && (p.t==='B' || p.sh) && shopHidden(p)) || (dfilt && p.t==='R' && (diningHidden(p.name, p.z) || !dietMatch(p))) || (rfilt && rideHidden(p)) ||
        (isPark && prefs.fitOnly && groupStyle() && p.t!=='W' && p.t!=='G' && !groupFitAll(p))){ if(!nameHit) return; filtered = true; }
-    if(q && p.name.toLowerCase().indexOf(q)<0 && (p.at||'').toLowerCase().indexOf(q)<0) return;
+    if(q && p.name.toLowerCase().indexOf(q)<0 && (p.at||'').toLowerCase().indexOf(q)<0 && !aliasHit(p, q)) return;
     shown++;
     if(isWL && !WL_WHERE[prefs.wlz] && p.z!==lastWZ){ lastWZ = p.z; lastWL = null; h += '<li class="wlhead">'+esc(WL_WHERE[p.z]||'')+'</li>'; }
     if(isWL){ var wl = hasWalkup(p.name, p.z); if(wl!==lastWL){ lastWL = wl; h += '<li class="wlsub">'+(wl ? 'On Disney’s walk-up list' : 'Other table service · walk in at the podium')+'</li>'; } }
@@ -4928,6 +4928,15 @@ function groupFit1(p, g){
   if(g==='adults'){ if(i && /[TB]/.test(n)) return 'Thrills'; if(p.t==='R' && diningKind(p.name, p.z)==='bar') return 'Bar or lounge'; return ''; }
   if(g==='multi'){ if(seatedShow(p)) return 'Seated, air-conditioned'; if(i && !h && !/[TBP]/.test(n) && p.name!=="Casey Jr. Splash 'N' Soak Station") return 'Easy for all ages'; return ''; }
   return '';
+}
+/* Other names people search by. Disney's names for some play spots don't say "playground" or the ride they are in,
+   so these find them, and every kid play spot answers to "playground" and "play area". */
+var PLACE_ALIAS = {'EP|Advanced Training Lab':'mission space playground, mission: space play area, space play area',
+  'EP|ImageWorks - The "What If" Labs':'journey into imagination playground, imagination play area, figment playground'};
+function aliasHit(p, q){
+  if(q.length < 3) return false;
+  var a = (PLACE_ALIAS[p.z+'|'+p.name] || '') + (kidSpot(p) ? ' playground play area kids play' : '');
+  return a.toLowerCase().indexOf(q) >= 0;
 }
 function kidSpot(p){ return KID_SPOTS[p.z+'|'+p.name] || ''; }
 /* Ideas for the group on park days: nap time with little ones, and after dark for teens and adults. */
