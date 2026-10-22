@@ -3620,6 +3620,7 @@ function renderDay(){
     if(park && Object.keys(seen).length) h += '<div class="quick"><button class="btn btn-plain btn-small" data-act="showmap" aria-pressed="'+(!!ui.showMap)+'">'+(ui.showMap ? 'Hide the map' : 'Show the map of the day')+'</button></div>';
     var nDone = st.filter(function(x){ return x.done; }).length, hideDone = park && !ui.showDone && nDone > 0;
     if(hideDone) h += '<div class="quick"><button class="btn btn-plain btn-small" data-act="showdone">Show '+nDone+' done stop'+(nDone>1 ? 's' : '')+'</button></div>';
+    else if(park && nDone > 0) h += '<div class="quick"><button class="btn btn-plain btn-small" data-act="hidedone">Hide '+nDone+' done stop'+(nDone>1 ? 's' : '')+'</button></div>';
     h += '<ol class="stops">';
     for(i=0;i<n;i++){
       var x = st[i], Lg = legs[i], t2 = typeOf(x), z2 = zoneName(x), open = cardOpen(x);
@@ -4068,7 +4069,7 @@ document.getElementById('app').addEventListener('click', function(ev){
   var act = b.dataset.act, id = curDayId(), day = id ? S.days[id] : null, i, p;
   // Someone following a shared trip can always look around, and can arrange and tick off stops once they use their own order.
   var mine = usingMine(id), o = mine ? mineAll[mineKey(id)] : null, cur;
-  if(isRO() && !{fitonly:1,raall:1,openweb:1,tripcode:1,linkdismiss:1,pane:1,day:1,zone:1,type:1,maps:1,gomode:1,scope:1,order:1,dfilter:1,wlz:1,wlonly:1,skstay:1,rrfind:1,rrcomp:1,rfilter:1,refreshlive:1,dietopen:1,diet:1,fav:1,got:1,foodstar:1,dropevery:1,dropgone:1,calzip:1,pfav:1,chpick:1,chask:1,favonly:1,tfollow:1,view:1,cardsall:1,sopen:1,showmap:1,showdone:1,tonext:1,undo:1}[act] && !(mine && {done:1,toggle:1,up:1,down:1,reset:1,optimize:1,meal:1,mealdur:1,mealclose:1,mealforce:1,hop:1,fillkind:1,add:1,addname:1,add2:1,quickadd:1,mealadd:1,rradd:1,rm:1,cleartime:1,sort:1,calzip:1,rainswap:1,wayadd:1}[act])) return;
+  if(isRO() && !{fitonly:1,raall:1,openweb:1,tripcode:1,linkdismiss:1,pane:1,day:1,zone:1,type:1,maps:1,gomode:1,scope:1,order:1,dfilter:1,wlz:1,wlonly:1,skstay:1,rrfind:1,rrcomp:1,rfilter:1,refreshlive:1,dietopen:1,diet:1,fav:1,got:1,foodstar:1,dropevery:1,dropgone:1,calzip:1,pfav:1,chpick:1,chask:1,favonly:1,tfollow:1,view:1,cardsall:1,sopen:1,showmap:1,showdone:1,hidedone:1,tonext:1,undo:1}[act] && !(mine && {done:1,toggle:1,up:1,down:1,reset:1,optimize:1,meal:1,mealdur:1,mealclose:1,mealforce:1,hop:1,fillkind:1,add:1,addname:1,add2:1,quickadd:1,mealadd:1,rradd:1,rm:1,cleartime:1,sort:1,calzip:1,rainswap:1,wayadd:1}[act])) return;
   if(mine && day && {napbreak:1,nightadd:1,raadd:1,add:1,addname:1,add2:1,quickadd:1,mealadd:1,rradd:1,rm:1,cleartime:1,sort:1,rainswap:1,wayadd:1}[act]){
     if(act==='cleartime' && !isOwnStop(id, {id:b.dataset.id})) return;
     day = mineProxy = {stops: displayed(id).map(function(s){ return Object.assign({}, s); }), mode:'custom', __mine:id};
@@ -4118,6 +4119,7 @@ document.getElementById('app').addEventListener('click', function(ev){
       setStatus('Updated '+d.days.length+' day'+(d.days.length===1 ? '' : 's')+(d.settings ? ' and settings' : '')+'.');
     })(); break;
     case 'showdone': ui.showDone = true; renderDay(); break;
+    case 'hidedone': ui.showDone = false; renderDay(); break;
     case 'tonext': var nc = document.querySelector('#paneDay section.next'); if(nc) nc.scrollIntoView({behavior:'smooth', block:'start'}); break;
     case 'undo': doUndo(); break;
     case 'order':
