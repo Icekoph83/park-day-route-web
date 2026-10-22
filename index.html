@@ -156,6 +156,8 @@ details.settings[open] > summary{margin-bottom:10px}
 .nextbar[hidden]{display:none}
 .nextbar .nbtext{flex:1 1 auto;min-width:0;background:none;border:0;color:inherit;font:inherit;font-size:.9rem;text-align:left;padding:4px 0;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .nextbar .nbtext span{opacity:.8;font-size:.75rem;text-transform:uppercase;letter-spacing:.06em}
+.nextbar .nbref{flex:none;min-width:40px;min-height:36px;border-radius:999px;border:1.5px solid rgba(255,255,255,.8);background:transparent;color:#fff;font-size:1.1rem;font-weight:800;padding:0 10px}
+.nextbar .nbref[disabled]{opacity:.55}
 .nextbar .nbgo{flex:none;background:#fff;color:var(--route,#2443D6);font-weight:800;border-radius:999px;padding:6px 16px;text-decoration:none}
 button.undo{margin-left:6px;background:none;border:1.5px solid currentColor;color:inherit;border-radius:999px;padding:2px 12px;font:inherit;font-weight:700;cursor:pointer}
 .stophead .name{flex:1 1 auto;min-width:0}
@@ -1986,7 +1988,7 @@ function refreshLive(){
       : c==='tool_error' ? 'The refresh task could not be started. It only works for the person who owns this trip.'
       : c==='cancelled' ? 'Refresh cancelled.'
       : 'Could not start a refresh just now. It may still have started, so give it a few minutes before trying again.';
-  }).then(function(){ refresh.busy = false; renderDay(); });
+  }).then(function(){ refresh.busy = false; renderDay(); if(refresh.msg) setStatus(refresh.msg); });
 }
 function liveOf(p){
   var d = live[p.z], x = d && d.items[p.name]; if(!x) return null;
@@ -3691,7 +3693,9 @@ function renderDay(){
   }
   // The next stop, pinned to the top of the screen once its card has scrolled away.
   if(nextI>=0) h = '<div class="nextbar" id="nextbar" hidden><button class="nbtext" data-act="tonext"><span>Next</span> <strong>'+esc(title(st[nextI], nextI, n))+'</strong>'+
-    (stopSummary(st[nextI], id, clock) ? ' · '+esc(stopSummary(st[nextI], id, clock)) : '')+'</button><a class="nbgo" id="nbgo" target="_blank" rel="noopener" href="#">Go</a></div>'+h;
+    (stopSummary(st[nextI], id, clock) ? ' · '+esc(stopSummary(st[nextI], id, clock)) : '')+'</button>'+
+    (id===todayId() && ((S.owner && S.mode==='db') || WEB_APP) ? '<button class="nbref" data-act="refreshlive" aria-label="Refresh wait times"'+(refresh.busy || webLiveBusy || Date.now() < refresh.until ? ' disabled' : '')+'>'+(refresh.busy || webLiveBusy ? '…' : '↻')+'</button>' : '')+
+    '<a class="nbgo" id="nbgo" target="_blank" rel="noopener" href="#">Go</a></div>'+h;
   el.innerHTML = h; applyQSearch();
   var go = el.querySelector('section.next .btn-go'), nb = document.getElementById('nbgo');
   if(nb){ if(go && go.href){ nb.href = go.href; } else nb.remove(); }
@@ -4614,7 +4618,7 @@ function webLiveFetch(byHand){
   })).then(function(){
     webLiveBusy = false; liveStamp = Date.now();
     refresh.msg = byHand ? (got ? 'Updated.' : 'Could not read wait times. Check your signal and try again.') : refresh.msg;
-    render();
+    render(); if(byHand) setStatus(got ? 'Wait times updated.' : refresh.msg);
   });
 }
 function webLiveStart(){
