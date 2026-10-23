@@ -156,6 +156,10 @@ details.settings[open] > summary{margin-bottom:10px}
 .nextbar[hidden]{display:none}
 .nextbar .nbtext{flex:1 1 auto;min-width:0;background:none;border:0;color:inherit;font:inherit;font-size:.9rem;text-align:left;padding:4px 0;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .nextbar .nbtext span{opacity:.8;font-size:.75rem;text-transform:uppercase;letter-spacing:.06em}
+.ratebadge{font-weight:700}.ratebadge.r3{color:var(--fit)}.ratebadge.r1{color:var(--muted)}.ratebadge.r9{color:var(--route)}
+.recapday{margin:6px 0;border-top:1px solid var(--line);padding-top:6px}.recapday summary{font-weight:700;cursor:pointer;min-height:36px;display:flex;align-items:center}
+.recaplist{list-style:none;padding:0;margin:4px 0}.recaplist li{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:6px;padding:6px 0;border-bottom:1px solid var(--line)}
+.recaplist small{color:var(--muted)}.rateseg{display:flex;gap:4px;flex-wrap:wrap}.rateseg .type{min-height:34px;padding:2px 10px;font-size:.8rem}.rdone{color:var(--fit);font-weight:800}.rnot{color:var(--muted)}
 .nextbar .nbref{flex:none;min-width:40px;min-height:36px;border-radius:999px;border:1.5px solid rgba(255,255,255,.8);background:transparent;color:#fff;font-size:1.1rem;font-weight:800;padding:0 10px}
 .nextbar .nbref[disabled]{opacity:.55}
 .nextbar .nbgo{flex:none;background:#fff;color:var(--route,#2443D6);font-weight:800;border-radius:999px;padding:6px 16px;text-decoration:none}
@@ -3689,6 +3693,7 @@ function renderDay(){
     (done ? '<button class="btn btn-plain btn-small x-mark" data-act="reset">Clear done marks</button>' : '')+
     '<button class="btn btn-plain btn-small x-trip" data-act="rmday">'+(ui.confirm==='rmday' ? 'Tap again to remove this day' : 'Remove this day')+'</button></div>';
   if(n > 1) h += '<p class="note">Times marked “around” are rough guesses that only help arrange the day. They assume '+(id===todayId() ? 'you start from now' : 'the day starts at '+fmtMin(dayOpen(id, st))+' at the first stop, which is park opening'+(dayEarly(id) && (function(){ var f = st.filter(function(x){ return !x.done && PARKS[x.z] && PARKS[x.z].gate; })[0]; return f && !isWater(f.z); })() ? ' less the '+EE_MIN+' min of early entry' : ''))+', the usual wait plus 10 min at a ride that has wait history (35 min at other attractions, and 10 min in line where you hold a Lightning Lane, arriving any time in its return window), 30 at a show, '+pace()[3]+' at a meal, 20 at a shop, '+CHECK_MIN+' to check in or out of a hotel mid-day and 45 for a transfer (between resorts: a walk for neighbours, 20 to 30 by Skyliner, monorail or boat, 60 where you have to change)'+(stayList().some(function(y){ return y.r && stayMode(y); }) ? ' (by car: your drive plus time from car to gate)' : '')+(pace()[2] ? ', plus '+pace()[2]+' min at each ride or show for your group' : '')+'. Pace: '+esc(pace()[0].toLowerCase())+' (change it under Settings).</p>';
+  h += exportSection();
   h += settingsHtml();
   }
   // The next stop, pinned to the top of the screen once its card has scrolled away.
@@ -3786,6 +3791,157 @@ function staySettings(){
   if(L[L.length-1].r && L.length < 8) h += '<div class="quick x-trip"><button class="btn btn-plain btn-small" data-act="stayadd">Add another place to stay</button></div>';
   if(L[0].r) h += '<p class="note x-trip">Each day starts at the hotel you woke up in and ends at the one you sleep in that night. Before check-in and after check-out the page stops offering a hotel: no start or end buttons, no hotel break, and new days are not started there. To choose which stop is the check-in or check-out, use the buttons on a hotel stop that day.</p>';
   return h;
+}
+/* Print and recap. Two kinds of file for the whole trip, made from what is planned and what was ticked off:
+   a printable itinerary (one page per day, with a box to tick at each stop) and a plain-text checklist; and a trip
+   recap listing what you did and didn't get to, with your ratings. Ratings are kept with the trip for its owner and on
+   this device for someone following a shared trip, and they feed back into Add stops: a place you rated shows it, and
+   places like the ones you loved are marked. */
+var RATE_LABEL = {3:'Loved it', 2:'It was fine', 1:'Not again', 9:'Want to do next time'};
+function rateKey(s){ return s.z+'|'+s.name; }
+function rates(){ return isRO() ? (prefs.rate || {}) : ((S.settings && S.settings.rate) || {}); }
+function setRate(k, v){
+  var r = Object.assign({}, rates()); if(r[k]===v) delete r[k]; else r[k] = v;
+  if(isRO()){ prefs.rate = r; savePrefs(); renderDay(); renderAdd(); return; }
+  if(Object.keys(r).length) S.settings.rate = r; else delete S.settings.rate; commit('@settings');
+}
+// What a place is like, for learning from ratings: its kind, the ride notes (thrill, dark, spinning…) and play spots.
+function likeTags(p){
+  var t = [], tp = TYPE[p.t]; if(tp) t.push(tp[0]);
+  if(p.t==='A' || p.t==='S'){ var i = info(p); if(i) i[1].split('').forEach(function(c){ if(NOTE_LABEL[c]) t.push(NOTE_LABEL[c]); }); }
+  if(p.t==='R'){ var k = diningKind(p.name, p.z); if(KIND_LABEL[k]) t.push(KIND_LABEL[k]); }
+  if(kidSpot(p)) t.push('Kids play spot');
+  if(typeof seatedShow==='function' && seatedShow(p)) t.push('Seated show');
+  return t;
+}
+// For each kind of place, the average of your ratings, from the places you rated 1 to 3.
+function likeStats(){
+  var r = rates(), acc = {};
+  Object.keys(r).forEach(function(k){ var v = r[k]; if(v<1 || v>3) return; var i = k.indexOf('|'), p = (PLACES[k.slice(0,i)]||[]).find(function(x){ return x.name===k.slice(i+1); }) || {z:k.slice(0,i), name:k.slice(i+1), t:'X'};
+    likeTags(p).forEach(function(t){ var a = acc[t] = acc[t] || {n:0, sum:0}; a.n++; a.sum += v; }); });
+  Object.keys(acc).forEach(function(t){ acc[t].avg = acc[t].sum/acc[t].n; });
+  return acc;
+}
+// "You loved this" on a rated place; "like ones you loved" on an unrated one whose kinds you rated highly.
+function likeBadge(p){
+  var v = rates()[rateKey(p)];
+  if(v) return '<span class="ratebadge r'+v+'">'+(v===3 ? '♥ ' : v===1 ? '✕ ' : v===9 ? '☆ ' : '')+esc(RATE_LABEL[v])+'</span>';
+  var st = likeStats(), tags = likeTags(p).filter(function(t){ return !TYPE[p.t] || t!==TYPE[p.t][0]; });
+  var good = tags.filter(function(t){ return st[t] && st[t].n>=2 && st[t].avg>=2.5; }), bad = tags.filter(function(t){ return st[t] && st[t].n>=2 && st[t].avg<=1.5; });
+  if(good.length && !bad.length) return '<span class="ratebadge r3">♥ like ones you loved ('+esc(good[0].toLowerCase())+')</span>';
+  if(bad.length && !good.length) return '<span class="ratebadge r1">'+esc(bad[0])+': you weren’t keen on these</span>';
+  return '';
+}
+function likeSummary(){
+  var kinds = {}; Object.keys(TYPE).forEach(function(k){ kinds[TYPE[k][0]] = 1; });
+  var st = likeStats(), ks = Object.keys(st).filter(function(t){ return st[t].n>=2 && !kinds[t]; });
+  var love = ks.filter(function(t){ return st[t].avg>=2.5; }).sort(function(a,b){ return st[b].avg-st[a].avg || st[b].n-st[a].n; });
+  var meh = ks.filter(function(t){ return st[t].avg<=1.5; }).sort(function(a,b){ return st[a].avg-st[b].avg; });
+  var out = [];
+  if(love.length) out.push('You loved: '+love.slice(0,4).map(function(t){ return t.toLowerCase(); }).join(', '));
+  if(meh.length) out.push('Less keen on: '+meh.slice(0,3).map(function(t){ return t.toLowerCase(); }).join(', '));
+  return out.join('. ');
+}
+// Every planned stop of the trip, day by day, in the order shown, with its rough time.
+function tripDays(){
+  return dayIds().map(function(id){ var st = displayed(id).filter(function(s){ return s.name!=='@gate'; }), clock = {}; try{ clock = clockFor(id, st); }catch(e){}
+    return {id:id, st:st, clock:clock}; }).filter(function(d){ return d.st.length; });
+}
+function stopTime(s, clock){
+  if(s.ll && s.time) return fmtTime(s.time)+' LL';
+  if(s.time) return fmtTime(s.time);
+  if(clock[s.id] && s.t!=='H') return '~'+fmtMin(clock[s.id].at);
+  return '';
+}
+function doneTime(s){ if(!s.doneAt || s.doneAt < 1e9) return ''; var d = new Date(s.doneAt); return fmtMin(d.getHours()*60 + d.getMinutes()); }
+function dayParkNames(st){ var z = []; st.forEach(function(s){ if(PARKS[s.z] && z.indexOf(PARKS[s.z].name)<0) z.push(PARKS[s.z].name); }); return z.join(' + '); }
+var PRINT_CSS = 'body{font:15px/1.4 -apple-system,Segoe UI,Roboto,sans-serif;color:#111;margin:24px;max-width:760px}h1{font-size:1.5rem;margin:0 0 4px}h2{font-size:1.2rem;margin:28px 0 6px;border-bottom:2px solid #111;padding-bottom:4px}'+
+  'p.sub{color:#555;margin:0 0 12px}ol{list-style:none;padding:0;margin:0}li{display:grid;grid-template-columns:22px 92px 1fr;gap:8px;padding:7px 0;border-bottom:1px solid #ddd;break-inside:avoid}'+
+  '.box{width:16px;height:16px;border:1.5px solid #111;border-radius:3px;margin-top:2px}.box.on{background:#111}.t{font-variant-numeric:tabular-nums;color:#333}.n{font-weight:700}.m{color:#555;font-size:.88rem}'+
+  '.r{font-weight:700}.foot{color:#666;font-size:.8rem;margin-top:24px}.pb{display:block}button.print{font:inherit;padding:8px 16px;border-radius:8px;border:1.5px solid #111;background:#fff;margin:8px 0 0}'+
+  '@media print{button.print{display:none}body{margin:0}h2.day{break-before:page}h2.day:first-of-type{break-before:auto}}';
+function printDoc(titleTxt, body){
+  return '<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>'+esc(titleTxt)+'</title><style>'+PRINT_CSS+'</style></head><body>'+
+    '<h1>'+esc(titleTxt)+'</h1>'+body+'<button class="print" onclick="window.print()">Print</button><p class="foot">Made with Park Day Route on '+esc(new Date().toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'}))+'. Times marked ~ are rough guesses; check the Disney app for hours, showtimes and Lightning Lane windows.</p></body></html>';
+}
+function itineraryHtml(){
+  var days = tripDays(), b = '<p class="sub">'+days.length+' day'+(days.length===1 ? '' : 's')+'. Tick each box as you go.</p>';
+  days.forEach(function(d){
+    b += '<h2 class="day">'+esc(longDay(d.id))+(dayParkNames(d.st) ? ' · '+esc(dayParkNames(d.st)) : '')+'</h2><ol>';
+    d.st.forEach(function(s, i){ var zn = zoneName(s), tp = typeOf(s);
+      b += '<li><span class="box'+(s.done ? ' on' : '')+'"></span><span class="t">'+esc(stopTime(s, d.clock))+'</span><span><span class="n">'+esc(title(s, i, d.st.length))+'</span><br><span class="m">'+
+        esc([tp[0], zn, s.note ? (s.t==='W' ? s.note : 'where: '+s.note) : ''].filter(Boolean).join(' · '))+'</span></span></li>'; });
+    b += '</ol>';
+  });
+  return printDoc('Trip itinerary', b);
+}
+function checklistText(){
+  var out = ['TRIP CHECKLIST', ''];
+  tripDays().forEach(function(d){
+    out.push(longDay(d.id).toUpperCase()+(dayParkNames(d.st) ? ' - '+dayParkNames(d.st) : ''));
+    d.st.forEach(function(s, i){ var t = stopTime(s, d.clock); out.push((s.done ? '[x] ' : '[ ] ')+(t ? t+'  ' : '')+title(s, i, d.st.length)+(zoneName(s) ? ' ('+zoneName(s)+')' : '')); });
+    out.push('');
+  });
+  out.push('Times with ~ are rough guesses. LL = Lightning Lane return time.');
+  return out.join('\n');
+}
+function recapHtml(){
+  var days = tripDays(), r = rates(), nDone = 0, nAll = 0, b = '';
+  days.forEach(function(d){ d.st.forEach(function(s){ if(s.t==='H') return; nAll++; if(s.done) nDone++; }); });
+  b += '<p class="sub">You did '+nDone+' of the '+nAll+' things you planned.'+(likeSummary() ? ' '+esc(likeSummary())+'.' : '')+'</p>';
+  days.forEach(function(d){
+    var did = d.st.filter(function(s){ return s.done && s.t!=='H'; }), not = d.st.filter(function(s){ return !s.done && s.t!=='H'; });
+    b += '<h2>'+esc(longDay(d.id))+(dayParkNames(d.st) ? ' · '+esc(dayParkNames(d.st)) : '')+'</h2>';
+    if(did.length){ b += '<p class="m">Did</p><ol>'+did.map(function(s){ var v = r[rateKey(s)];
+      return '<li><span class="box on"></span><span class="t">'+esc(doneTime(s))+'</span><span><span class="n">'+esc(s.name)+'</span>'+(v ? ' <span class="r">· '+esc(RATE_LABEL[v])+'</span>' : '')+'<br><span class="m">'+esc([typeOf(s)[0], zoneName(s)].filter(Boolean).join(' · '))+'</span></span></li>'; }).join('')+'</ol>'; }
+    if(not.length){ b += '<p class="m">Didn’t get to</p><ol>'+not.map(function(s){ var v = r[rateKey(s)];
+      return '<li><span class="box"></span><span class="t"></span><span><span class="n">'+esc(s.name)+'</span>'+(v ? ' <span class="r">· '+esc(RATE_LABEL[v])+'</span>' : '')+'<br><span class="m">'+esc([typeOf(s)[0], zoneName(s)].filter(Boolean).join(' · '))+'</span></span></li>'; }).join('')+'</ol>'; }
+  });
+  return printDoc('Trip recap', b);
+}
+function csvCell(v){ v = String(v==null ? '' : v); return /[",\n]/.test(v) ? '"'+v.replace(/"/g,'""')+'"' : v; }
+function recapCsv(){
+  var r = rates(), rows = [['Date','Park or area','Stop','Kind','Planned time','Done','Done at','Your rating']];
+  tripDays().forEach(function(d){ d.st.forEach(function(s, i){ if(s.t==='H') return; var v = r[rateKey(s)];
+    rows.push([d.id, zoneName(s) || ZNAME[s.z] || '', s.name, typeOf(s)[0], stopTime(s, d.clock).replace(/^~/,'around '), s.done ? 'yes' : 'no', doneTime(s), v ? RATE_LABEL[v] : '']); }); });
+  return rows.map(function(x){ return x.map(csvCell).join(','); }).join('\r\n');
+}
+// Hands a file to the viewer: through the page's download prompt, or in the web app as an ordinary browser download.
+function offerFile(name, data, mime){
+  ui.expMsg = '';
+  if(dlApi){ dlApi.save({filename:name, data:data}).then(function(){ ui.expMsg = 'Saved '+name+'.'; renderDay(); })
+    .catch(function(e){ var c = e && e.code; ui.expMsg = c==='declined' ? '' : c==='rate_limited' ? 'A save is already waiting for your answer.' : 'Saving files is not available here.'; renderDay(); }); return; }
+  if(WEB_APP || typeof Blob!=='undefined'){
+    try{ var url = URL.createObjectURL(new Blob([data], {type:mime})), a = document.createElement('a'); a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(function(){ URL.revokeObjectURL(url); }, 60e3); ui.expMsg = 'Saved '+name+'.'; }catch(e){ ui.expMsg = 'Saving files is not available here.'; }
+    renderDay(); return;
+  }
+  ui.expMsg = 'Saving files is not available here.'; renderDay();
+}
+function exportSection(){
+  var days = tripDays(); if(!days.length) return '';
+  var r = rates(), nRated = Object.keys(r).length, h = '<details class="outlook export"'+(ui.expOpen ? ' open' : '')+'><summary><span><strong>Print &amp; trip recap</strong> · '+
+    (nRated ? nRated+' rated' : 'itinerary, checklist and what you did')+'</span></summary>';
+  h += '<p class="note">For a paper copy: a printable itinerary with one page per day and a box to tick at each stop, or a plain checklist for notes apps.</p>'+
+    '<div class="actions"><button class="btn btn-plain btn-small" data-act="expitin">Printable itinerary</button><button class="btn btn-plain btn-small" data-act="exptxt">Plain checklist</button></div>';
+  // The recap: what was done each day, what wasn't, and a rating for each.
+  var body = '';
+  days.forEach(function(d){
+    var rows = d.st.filter(function(s){ return s.t!=='H' && s.t!=='W' && s.t!=='G'; }); if(!rows.length) return;
+    var did = rows.filter(function(s){ return s.done; }).length;
+    body += '<details class="recapday"'+(ui.recapOpen && ui.recapOpen[d.id] ? ' open' : '')+' data-day="'+d.id+'"><summary>'+esc(medDay(d.id))+' · did '+did+' of '+rows.length+'</summary><ul class="recaplist">';
+    rows.forEach(function(s){ var k = rateKey(s), v = r[k], btn = function(n, lbl, aria){ return '<button class="type" data-act="rate" data-k="'+esc(k)+'" data-v="'+n+'" aria-pressed="'+(v===n)+'" aria-label="'+esc(aria)+'">'+lbl+'</button>'; };
+      body += '<li><div><span class="'+(s.done ? 'rdone' : 'rnot')+'">'+(s.done ? '✓' : '○')+'</span> <strong>'+esc(s.name)+'</strong>'+(s.done && doneTime(s) ? ' <small>'+esc(doneTime(s))+'</small>' : s.done ? '' : ' <small>didn’t get to</small>')+'</div><div class="rateseg">'+
+        (s.done ? btn(3,'♥ Loved','Loved it')+btn(2,'Fine','It was fine')+btn(1,'Not again','Not again') : btn(9,'☆ Next time','Want to do next time')+btn(1,'Skip it','Not interested'))+'</div></li>'; });
+    body += '</ul></details>';
+  });
+  if(body){
+    h += '<h3 class="fsub">What you did</h3><p class="note">Rate what you did and mark what you’d still like to do. Places you rate show it in Add stops, and once a few ratings are in, places like the ones you loved are marked.'+(isRO() ? ' Your ratings stay on this device.' : '')+'</p>'+
+      (likeSummary() ? '<p class="note"><strong>'+esc(likeSummary())+'.</strong></p>' : '')+body+
+      '<div class="actions"><button class="btn btn-plain btn-small" data-act="exprecap">Save recap to print</button><button class="btn btn-plain btn-small" data-act="expcsv">Save recap as a spreadsheet</button></div>';
+  }
+  if(ui.expMsg) h += '<p class="note" role="status">'+esc(ui.expMsg)+'</p>';
+  return h+'</details>';
 }
 function settingsHtml(){
   var openS = ui.settingsOpen!=null ? ui.settingsOpen : !!window.__PDR_TEST;
@@ -4033,7 +4189,7 @@ function renderAdd(){
     if(isWL){ var wl = hasWalkup(p.name, p.z); if(wl!==lastWL){ lastWL = wl; h += '<li class="wlsub">'+(wl ? 'On Disney’s walk-up list' : 'Other table service · walk in at the podium')+'</li>'; } }
     var tp = typeOf(p), c = inDay[p.z+'|'+p.name], isHome = p.t==='H' && homes.indexOf(p.name)>=0;
     h += '<li class="res"><div><div class="rname">'+esc(p.name)+'</div><div class="rmeta"><span class="tag '+tp[1]+'">'+esc(tp[0])+'</span>'+
-      (p.note ? '<span>'+esc(p.note)+'</span>' : '')+(p.ap ? '<span>approximate pin</span>' : '')+(filtered ? '<span class="warn">hidden by your filters</span>' : '')+(groupFit(p) ? '<span class="fitbadge">✓ '+esc(groupFit(p))+'</span>' : '')+(kidSpot(p) ? '<span class="kidtip">🛝 '+esc(kidSpot(p))+'</span>' : '')+
+      (p.note ? '<span>'+esc(p.note)+'</span>' : '')+(p.ap ? '<span>approximate pin</span>' : '')+(filtered ? '<span class="warn">hidden by your filters</span>' : '')+likeBadge(p)+(groupFit(p) ? '<span class="fitbadge">✓ '+esc(groupFit(p))+'</span>' : '')+(kidSpot(p) ? '<span class="kidtip">🛝 '+esc(kidSpot(p))+'</span>' : '')+
       (p.t==='R' && !isBooth(p.name, p.z) && KIND_LABEL[diningKind(p.name, p.z)] ? '<span>'+KIND_LABEL[diningKind(p.name, p.z)]+'</span>' : '')+
       (p.t==='R' ? spans(walkBits(p).concat(cartWords(p)).concat(dietWords(p))) : '')+(isWL && !walkBits(p).length ? walkHow(p) : '')+
       ((p.t==='A' || p.t==='S') ? spans(rideFacts(p).concat(liveBits(p)).concat(id && !(id===todayId() && liveOf(p) && liveOf(p).recent && liveOf(p).w!=null) ? typRangeWords(p, id) : [])) : '')+
@@ -4073,7 +4229,7 @@ document.getElementById('app').addEventListener('click', function(ev){
   var act = b.dataset.act, id = curDayId(), day = id ? S.days[id] : null, i, p;
   // Someone following a shared trip can always look around, and can arrange and tick off stops once they use their own order.
   var mine = usingMine(id), o = mine ? mineAll[mineKey(id)] : null, cur;
-  if(isRO() && !{fitonly:1,raall:1,openweb:1,tripcode:1,linkdismiss:1,pane:1,day:1,zone:1,type:1,maps:1,gomode:1,scope:1,order:1,dfilter:1,wlz:1,wlonly:1,skstay:1,rrfind:1,rrcomp:1,rfilter:1,refreshlive:1,dietopen:1,diet:1,fav:1,got:1,foodstar:1,dropevery:1,dropgone:1,calzip:1,pfav:1,chpick:1,chask:1,favonly:1,tfollow:1,view:1,cardsall:1,sopen:1,showmap:1,showdone:1,hidedone:1,tonext:1,undo:1}[act] && !(mine && {done:1,toggle:1,up:1,down:1,reset:1,optimize:1,meal:1,mealdur:1,mealclose:1,mealforce:1,hop:1,fillkind:1,add:1,addname:1,add2:1,quickadd:1,mealadd:1,rradd:1,rm:1,cleartime:1,sort:1,calzip:1,rainswap:1,wayadd:1}[act])) return;
+  if(isRO() && !{fitonly:1,raall:1,openweb:1,tripcode:1,linkdismiss:1,pane:1,day:1,zone:1,type:1,maps:1,gomode:1,scope:1,order:1,dfilter:1,wlz:1,wlonly:1,skstay:1,rrfind:1,rrcomp:1,rfilter:1,refreshlive:1,dietopen:1,diet:1,fav:1,got:1,foodstar:1,dropevery:1,dropgone:1,calzip:1,pfav:1,chpick:1,chask:1,favonly:1,tfollow:1,view:1,cardsall:1,sopen:1,showmap:1,showdone:1,hidedone:1,expitin:1,exptxt:1,exprecap:1,expcsv:1,rate:1,tonext:1,undo:1}[act] && !(mine && {done:1,toggle:1,up:1,down:1,reset:1,optimize:1,meal:1,mealdur:1,mealclose:1,mealforce:1,hop:1,fillkind:1,add:1,addname:1,add2:1,quickadd:1,mealadd:1,rradd:1,rm:1,cleartime:1,sort:1,calzip:1,rainswap:1,wayadd:1}[act])) return;
   if(mine && day && {napbreak:1,nightadd:1,raadd:1,add:1,addname:1,add2:1,quickadd:1,mealadd:1,rradd:1,rm:1,cleartime:1,sort:1,rainswap:1,wayadd:1}[act]){
     if(act==='cleartime' && !isOwnStop(id, {id:b.dataset.id})) return;
     day = mineProxy = {stops: displayed(id).map(function(s){ return Object.assign({}, s); }), mode:'custom', __mine:id};
@@ -4441,6 +4597,11 @@ document.getElementById('app').addEventListener('click', function(ev){
     case 'chpick': ui.q = b.dataset.v; document.getElementById('search').value = ui.q; renderAdd(); break;
     case 'chask': askClaudeChars(ui.q.trim()); break;
     case 'calzip': if(id) saveCal(id, displayed(id)); break;
+    case 'expitin': offerFile('Trip itinerary.html', itineraryHtml(), 'text/html'); break;
+    case 'exptxt': offerFile('Trip checklist.txt', checklistText(), 'text/plain'); break;
+    case 'exprecap': offerFile('Trip recap.html', recapHtml(), 'text/html'); break;
+    case 'expcsv': offerFile('Trip recap.csv', recapCsv(), 'text/csv'); break;
+    case 'rate': setRate(b.dataset.k, +b.dataset.v); break;
     case 'rainswap':
       if(!day) break; p = (PLACES[b.dataset.z]||[])[+b.dataset.i]; i = findStop(day, b.dataset.id); if(!p || i<0) break;
       (function(){ var old = day.stops[i], ns = makeStop(p); if(old.time && p.t==='S') ns.time = old.time; day.stops.splice(i, 1, ns); setStatus('Swapped '+old.name+' for '+p.name+'.'); })();
@@ -4559,7 +4720,7 @@ document.getElementById('app').addEventListener('focusout', function(ev){
 
   } else if(t.id==='newDayDate') setTimeout(catchUp, 0);
 });
-document.getElementById('app').addEventListener('toggle', function(ev){ var t = ev.target; if(!t || !t.classList) return; if(t.classList.contains('settings')){ ui.settingsOpen = t.open; return; } if(t.classList.contains('dguess')){ ui.dguess = t.open; return; } if(t.classList.contains('famideas')){ (ui.famOpen = ui.famOpen || {})[t.dataset.k] = t.open; return; } if(t.classList.contains('rasec')){ (ui.raOpen = ui.raOpen || {})[t.dataset.r] = t.open; return; } if(t.classList.contains('stay')){ (ui.stayOpen = ui.stayOpen || {})[t.dataset.i] = t.open; return; } if(t.classList.contains('calx')){ ui.cal = t.open; return; } if(t.classList.contains('wayx')){ ui.way = t.open; return; } if(t.classList.contains('rainplan')){ ui.rain = t.open; return; } if(t.classList.contains('waitless')){ ui.waitOpen = t.open; if(t.open && !t.dataset.trip) setTimeout(renderDay, 0); } else if(t.classList.contains('drops')) ui.drops = t.open; else if(t.classList.contains('dropset')) ui.dropSet = t.open; else if(t.classList.contains('foodlist')) ui.food = t.open; else if(t.classList.contains('outlook')) ui.outlook = t.open; else if(t.classList.contains('seas')) ui.seasOpen[t.dataset.k] = t.open; }, true);
+document.getElementById('app').addEventListener('toggle', function(ev){ var t = ev.target; if(!t || !t.classList) return; if(t.classList.contains('settings')){ ui.settingsOpen = t.open; return; } if(t.classList.contains('export')){ ui.expOpen = t.open; return; } if(t.classList.contains('recapday')){ (ui.recapOpen = ui.recapOpen || {})[t.dataset.day] = t.open; return; } if(t.classList.contains('dguess')){ ui.dguess = t.open; return; } if(t.classList.contains('famideas')){ (ui.famOpen = ui.famOpen || {})[t.dataset.k] = t.open; return; } if(t.classList.contains('rasec')){ (ui.raOpen = ui.raOpen || {})[t.dataset.r] = t.open; return; } if(t.classList.contains('stay')){ (ui.stayOpen = ui.stayOpen || {})[t.dataset.i] = t.open; return; } if(t.classList.contains('calx')){ ui.cal = t.open; return; } if(t.classList.contains('wayx')){ ui.way = t.open; return; } if(t.classList.contains('rainplan')){ ui.rain = t.open; return; } if(t.classList.contains('waitless')){ ui.waitOpen = t.open; if(t.open && !t.dataset.trip) setTimeout(renderDay, 0); } else if(t.classList.contains('drops')) ui.drops = t.open; else if(t.classList.contains('dropset')) ui.dropSet = t.open; else if(t.classList.contains('foodlist')) ui.food = t.open; else if(t.classList.contains('outlook')) ui.outlook = t.open; else if(t.classList.contains('seas')) ui.seasOpen[t.dataset.k] = t.open; }, true);
 setInterval(function(){
   var id = curDayId(); if(!id || id!==todayId() || document.hidden) return;
   var d = dropNow(id, displayed(id)), sig = d ? d.g.key+'|'+d.left : '';
