@@ -1281,7 +1281,19 @@ var PARK_GATES = {
       ['Port Orleans French Quarter',14],['Saratoga Springs',16],['Old Key West',18],['BoardWalk',20],['Yacht & Beach Club',20],['Contemporary',22],
       ['Polynesian',22],['Grand Floridian',24],['Fort Wilderness',26],['Wilderness Lodge',26],['Art of Animation',27],['Pop Century',28],
       ['Magic Kingdom (park, after 10 a.m.)',29],['EPCOT (park, after 10 a.m.)',30],['Hollywood Studios (park, after 10 a.m.)',31]],
-    other:{}, otherNote:'Facing the sign, gates 1–9 are to the left, 10–26 straight ahead and 27–31 to the right. Disney Springs: change at any resort'}
+    other:{}, otherNote:'Facing the sign, gates 1–9 are to the left, 10–26 straight ahead and 27–31 to the right. Disney Springs: change at any resort'},
+  EP:{name:'EPCOT', resorts:{"Disney's Old Key West Resort":1, "Disney's Fort Wilderness Resort & Campground":2, "Disney's Wilderness Lodge":2,
+      "Disney's Coronado Springs Resort":3, "Disney's Saratoga Springs Resort & Spa":4, "Disney's Animal Kingdom Lodge":5, "Disney's Animal Kingdom Villas - Kidani Village":5,
+      "Disney's Port Orleans Resort - Riverside":8, "Disney's Port Orleans Resort - French Quarter":10, "Disney's All-Star Sports Resort":15,
+      "Disney's All-Star Music Resort":16, "Disney's All-Star Movies Resort":17},
+    parks:{AK:11, HS:12},
+    list:[['Old Key West',1],['Fort Wilderness',2],['Wilderness Lodge',2],['Coronado Springs',3],['Saratoga Springs',4],['Animal Kingdom Lodge (Jambo and Kidani)',5],
+      ['Minnie Van (Lyft)',6],['Port Orleans Riverside',8],['Port Orleans French Quarter',10],['Animal Kingdom (park, after 10 a.m.)',11],
+      ['Hollywood Studios (park, after 10 a.m.)',12],['All-Star Sports',15],['All-Star Music',16],['All-Star Movies',17]],
+    other:{"Disney's Caribbean Beach Resort":'Skyliner', "Disney's Riviera Resort":'Skyliner', "Disney's Art of Animation Resort":'Skyliner', "Disney's Pop Century Resort":'Skyliner',
+      "Disney's Grand Floridian Resort & Spa":'monorail', "Disney's Contemporary Resort":'monorail', "Disney's Polynesian Village Resort":'monorail',
+      "Disney's BoardWalk Inn":'walkway or boat', "Disney's BoardWalk Villas":'walkway or boat', "Disney's Beach Club Resort":'walkway or boat', "Disney's Yacht Club Resort":'walkway or boat'},
+    otherNote:'Magic Kingdom, the Transportation and Ticket Center, Grand Floridian, Contemporary and Polynesian are by monorail from the main entrance; Caribbean Beach, Riviera, Art of Animation and Pop Century by Skyliner from International Gateway; BoardWalk, Beach Club and Yacht Club by walkway or boat. The gate numbers here are not the same as at the other parks. Disney Springs: change at any resort'}
 };
 // The gate to stand at, at park z, for a bus toward stop b; null when the sign has none.
 function parkGateFor(z, b){
