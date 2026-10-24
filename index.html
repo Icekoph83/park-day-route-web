@@ -52,6 +52,18 @@ a{color:var(--route)}
 .tabs{display:grid;grid-template-columns:1fr 1fr;gap:6px;position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--bg);padding-block:6px}
 .tab{min-height:46px;border-radius:12px;border:1.5px solid var(--line);background:var(--surface);font-weight:700}
 .tab[aria-selected="true"]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+/* Long explanations show their first two lines; ⓘ opens the rest. */
+.creditd summary{list-style:none;cursor:pointer}.creditd summary::-webkit-details-marker{display:none}.creditd summary .noteinfo{margin-left:6px}
+details.settings,details.export{scroll-margin-top:64px}
+.note.clamp{display:-webkit-box;-webkit-line-clamp:2;line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;margin-bottom:0}
+.noteinfo{display:inline-flex;align-items:center;gap:4px;margin:2px 0 6px;padding:2px 10px;min-height:30px;border-radius:999px;border:1px solid var(--line);background:transparent;color:var(--muted);font-size:.78rem;font-weight:700;cursor:pointer;align-self:flex-start}
+/* On a phone the view tabs sit at the bottom of the screen, in reach of a thumb. */
+@media (max-width:899px){
+  .tabs{position:fixed;top:auto;bottom:0;left:0;right:0;grid-template-columns:1fr 1fr .8fr;z-index:45;padding:6px 12px calc(6px + env(safe-area-inset-bottom,0px));border-top:1px solid var(--line);box-shadow:0 -4px 16px rgba(0,0,0,.08)}
+  .tab{min-height:44px}
+  .app{padding-bottom:calc(76px + env(safe-area-inset-bottom,0px))}
+  .toast{bottom:calc(72px + env(safe-area-inset-bottom,0px))}
+}
 
 .cols{display:grid;grid-template-columns:minmax(0,1fr);gap:20px;align-items:start}
 .pane{display:flex;flex-direction:column;gap:14px;min-width:0}
@@ -391,6 +403,7 @@ footer.credit{font-size:.8rem;color:var(--muted);border-top:1.5px solid var(--li
   <div class="tabs" role="tablist" aria-label="View">
     <button class="tab" role="tab" id="tabDay" data-act="pane" data-v="day" aria-selected="true">Route</button>
     <button class="tab" role="tab" id="tabAdd" data-act="pane" data-v="add" aria-selected="false">Add stops</button>
+    <button class="tab tabset" id="tabSet" data-act="gosettings" aria-label="Settings">Settings</button>
   </div>
   <main class="cols">
     <section class="pane pane-day" id="paneDay" aria-label="Route for the day"></section>
@@ -403,7 +416,7 @@ footer.credit{font-size:.8rem;color:var(--muted);border-top:1.5px solid var(--li
     </section>
   </main>
   <div class="toast" id="toast" role="status" hidden><span id="toastText"></span><button type="button" id="toastX" aria-label="Dismiss">×</button></div>
-  <footer class="credit">Unofficial planner, not affiliated with Disney. Place locations for the parks, Disney Springs and resort dining come from ThemeParks.wiki as of October 9, 2026; a few extra places were looked up individually. Height requirements and ride notes come from Walt Disney World's attraction listings, checked October 9, 2026. Shops, their locations and what they sell come from Walt Disney World's shops listing, read October 9, 2026. Seasonal, limited-time and party-exclusive menu items, walk-up waitlists, dining service, price, meal periods, allergy-friendly and plant-based items come from Walt Disney World's dining listing and menus, read October 10, 2026; menus change, so confirm on the day and always tell a cast member about an allergy. Parking prices and rules, Lightning Lane booking windows and Park Hopper rules come from Walt Disney World's own pages, read October 10, 2026; the hotels with early park entry and the rides that run during it come from Walt Disney World's early-entry page, read the same day. Showtimes come from Walt Disney World's entertainment schedule, read October 10, 2026 (published in full through October 31), and can change; beyond that a show's usual times are offered and marked as usual. On the day the live feed's times replace them. Lightning Lane drop times are unofficial: supplied by the trip's owner on October 10, 2026, with Magic Kingdom times from BlogMickey's list for fall 2025. The characters-and-stories list is general knowledge as of October 2026 (character appearances change), and “Ask Claude” suggestions are picked by Claude from this planner’s own list of places. Baby Care Centers and the Rider Switch ride list come from Walt Disney World's own pages, read October 13, 2026. Storm swaps and show-viewing tips are unofficial general advice, and food estimates use Disney's price bands. Water park places, hours and closures come from ThemeParks.wiki and Walt Disney World's water park, dining and restroom pages, read October 13, 2026, with the refurbishment pattern from Disney Food Blog (June 30, 2026); water parks also close for weather and capacity. Usual waits, crowd forecasts and park hours come from Queue-Times.com (2025 averages by ride; forecasts and hours as read October 10, 2026). The Magic Kingdom party-day adjustment uses TouringPlans' measured averages (August 2026). Party, festival and race dates come from Disney's announcements and were checked against a second source on October 10, 2026. Wait times, show times and Lightning Lane details, when shown, come from ThemeParks.wiki and carry the time they were read. Walk times are rough estimates from straight-line distance at the pace chosen under Settings; your maps app gives the real route. How to get between resorts and parks changes, so check the official park app on the day.</footer>
+  <footer class="credit"><details class="creditd"><summary>Unofficial planner, not affiliated with Disney. <span class="noteinfo">ⓘ Sources</span></summary>Place locations for the parks, Disney Springs and resort dining come from ThemeParks.wiki as of October 9, 2026; a few extra places were looked up individually. Height requirements and ride notes come from Walt Disney World's attraction listings, checked October 9, 2026. Shops, their locations and what they sell come from Walt Disney World's shops listing, read October 9, 2026. Seasonal, limited-time and party-exclusive menu items, walk-up waitlists, dining service, price, meal periods, allergy-friendly and plant-based items come from Walt Disney World's dining listing and menus, read October 10, 2026; menus change, so confirm on the day and always tell a cast member about an allergy. Parking prices and rules, Lightning Lane booking windows and Park Hopper rules come from Walt Disney World's own pages, read October 10, 2026; the hotels with early park entry and the rides that run during it come from Walt Disney World's early-entry page, read the same day. Showtimes come from Walt Disney World's entertainment schedule, read October 10, 2026 (published in full through October 31), and can change; beyond that a show's usual times are offered and marked as usual. On the day the live feed's times replace them. Lightning Lane drop times are unofficial: supplied by the trip's owner on October 10, 2026, with Magic Kingdom times from BlogMickey's list for fall 2025. The characters-and-stories list is general knowledge as of October 2026 (character appearances change), and “Ask Claude” suggestions are picked by Claude from this planner’s own list of places. Baby Care Centers and the Rider Switch ride list come from Walt Disney World's own pages, read October 13, 2026. Storm swaps and show-viewing tips are unofficial general advice, and food estimates use Disney's price bands. Water park places, hours and closures come from ThemeParks.wiki and Walt Disney World's water park, dining and restroom pages, read October 13, 2026, with the refurbishment pattern from Disney Food Blog (June 30, 2026); water parks also close for weather and capacity. Usual waits, crowd forecasts and park hours come from Queue-Times.com (2025 averages by ride; forecasts and hours as read October 10, 2026). The Magic Kingdom party-day adjustment uses TouringPlans' measured averages (August 2026). Party, festival and race dates come from Disney's announcements and were checked against a second source on October 10, 2026. Wait times, show times and Lightning Lane details, when shown, come from ThemeParks.wiki and carry the time they were read. Walk times are rough estimates from straight-line distance at the pace chosen under Settings; your maps app gives the real route. How to get between resorts and parks changes, so check the official park app on the day.</details></footer>
 </div>
 
 <script>
@@ -3448,6 +3461,29 @@ function placeNextBar(){
   bar.hidden = !off;
   if(off){ bar.style.left = Math.max(0, pane.left)+'px'; bar.style.width = pane.width+'px'; bar.style.top = tb+'px'; }
 }
+/* Shorter explanations. After each render, a long note (over about two lines) shows its first two lines and an ⓘ
+   button that opens the rest; notes you opened stay open across re-renders. Status messages are left whole. */
+var NOTE_MIN = 170, noteOpen = {};
+function noteKey(p){ return p.textContent.trim().slice(0, 60); }
+function shortenNotes(){
+  document.querySelectorAll('#app p.note').forEach(function(p){
+    if(p.dataset.short || p.getAttribute('role')==='status' || p.closest('.toast')) return;
+    var len = p.textContent.trim().length; if(len < NOTE_MIN) return;
+    p.dataset.short = '1'; var k = noteKey(p), open = !!noteOpen[k];
+    p.classList.toggle('clamp', !open);
+    var b = document.createElement('button'); b.type = 'button'; b.className = 'noteinfo'; b.dataset.nk = k;
+    b.setAttribute('aria-expanded', open ? 'true' : 'false'); b.textContent = open ? 'ⓘ Less' : 'ⓘ More';
+    p.insertAdjacentElement('afterend', b);
+  });
+}
+document.getElementById('app').addEventListener('click', function(e){
+  var b = e.target.closest && e.target.closest('.noteinfo'); if(!b) return;
+  e.stopPropagation(); var p = b.previousElementSibling; if(!p) return;
+  var open = p.classList.contains('clamp'); p.classList.toggle('clamp', !open); noteOpen[b.dataset.nk] = open;
+  b.setAttribute('aria-expanded', open ? 'true' : 'false'); b.textContent = open ? 'ⓘ Less' : 'ⓘ More';
+}, true);
+var noteMO = null; try{ noteMO = new MutationObserver(function(){ if(noteMO.t) return; noteMO.t = requestAnimationFrame(function(){ noteMO.t = 0; shortenNotes(); }); });
+  noteMO.observe(document.getElementById('app'), {childList:true, subtree:true}); }catch(e){}
 window.addEventListener('scroll', placeNextBar, {passive:true}); window.addEventListener('resize', placeNextBar);
 
 /* ---------- render ---------- */
@@ -4241,7 +4277,7 @@ document.getElementById('app').addEventListener('click', function(ev){
   var act = b.dataset.act, id = curDayId(), day = id ? S.days[id] : null, i, p;
   // Someone following a shared trip can always look around, and can arrange and tick off stops once they use their own order.
   var mine = usingMine(id), o = mine ? mineAll[mineKey(id)] : null, cur;
-  if(isRO() && !{fitonly:1,raall:1,openweb:1,tripcode:1,linkdismiss:1,pane:1,day:1,zone:1,type:1,maps:1,gomode:1,scope:1,order:1,dfilter:1,wlz:1,wlonly:1,skstay:1,rrfind:1,rrcomp:1,rfilter:1,refreshlive:1,dietopen:1,diet:1,fav:1,got:1,foodstar:1,dropevery:1,dropgone:1,calzip:1,pfav:1,chpick:1,chask:1,favonly:1,tfollow:1,view:1,cardsall:1,sopen:1,showmap:1,showdone:1,hidedone:1,expitin:1,exptxt:1,exprecap:1,expcsv:1,rate:1,tonext:1,undo:1}[act] && !(mine && {done:1,toggle:1,up:1,down:1,reset:1,optimize:1,meal:1,mealdur:1,mealclose:1,mealforce:1,hop:1,fillkind:1,add:1,addname:1,add2:1,quickadd:1,mealadd:1,rradd:1,rm:1,cleartime:1,sort:1,calzip:1,rainswap:1,wayadd:1}[act])) return;
+  if(isRO() && !{fitonly:1,raall:1,openweb:1,tripcode:1,linkdismiss:1,pane:1,day:1,zone:1,type:1,maps:1,gomode:1,scope:1,order:1,dfilter:1,wlz:1,wlonly:1,skstay:1,rrfind:1,rrcomp:1,rfilter:1,refreshlive:1,dietopen:1,diet:1,fav:1,got:1,foodstar:1,dropevery:1,dropgone:1,calzip:1,pfav:1,chpick:1,chask:1,favonly:1,tfollow:1,view:1,cardsall:1,sopen:1,showmap:1,showdone:1,hidedone:1,gosettings:1,expitin:1,exptxt:1,exprecap:1,expcsv:1,rate:1,tonext:1,undo:1}[act] && !(mine && {done:1,toggle:1,up:1,down:1,reset:1,optimize:1,meal:1,mealdur:1,mealclose:1,mealforce:1,hop:1,fillkind:1,add:1,addname:1,add2:1,quickadd:1,mealadd:1,rradd:1,rm:1,cleartime:1,sort:1,calzip:1,rainswap:1,wayadd:1}[act])) return;
   if(mine && day && {napbreak:1,nightadd:1,raadd:1,add:1,addname:1,add2:1,quickadd:1,mealadd:1,rradd:1,rm:1,cleartime:1,sort:1,rainswap:1,wayadd:1}[act]){
     if(act==='cleartime' && !isOwnStop(id, {id:b.dataset.id})) return;
     day = mineProxy = {stops: displayed(id).map(function(s){ return Object.assign({}, s); }), mode:'custom', __mine:id};
@@ -4314,6 +4350,11 @@ document.getElementById('app').addEventListener('click', function(ev){
       if(S.trip && !tripReg()[S.trip]){ S.trip = ''; prefs.trip = ''; savePrefs(); loadTripLocal(); S.ready = S.mode!=='db'; if(S.db) subscribeTrip(); }
       activate(); render(); break;
     case 'pane': prefs.pane = b.dataset.v; savePrefs(); applyPane(); break;
+    case 'gosettings': prefs.pane = 'day'; savePrefs(); applyPane(); ui.settingsOpen = true; renderDay();
+      (function(){ var d = document.querySelector('#paneDay details.settings');
+        // Settings live in the Planning view; from In the park, switch over and say so.
+        if(!d && id){ prefs.viewFor = prefs.viewFor || {}; prefs.viewFor[id] = 'plan'; savePrefs(); renderDay(); d = document.querySelector('#paneDay details.settings'); if(d) setStatus('Switched to Planning to show Settings.'); }
+        if(d){ d.open = true; d.scrollIntoView({block:'start', behavior:'smooth'}); } })(); break;
     case 'tripnew': ui.tripEdit = ui.tripEdit==='new' ? null : 'new'; ui.confirm = null; renderTrips(); var tn = document.getElementById('tripName'); if(tn) tn.focus(); break;
     case 'triprename': ui.tripEdit = ui.tripEdit==='rename' ? null : 'rename'; ui.confirm = null; renderTrips(); break;
     case 'tripcreate': case 'tripsave':
