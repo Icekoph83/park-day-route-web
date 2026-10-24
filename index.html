@@ -72,6 +72,13 @@ details.settings,details.export{scroll-margin-top:64px}
 #status:empty{display:none}
 @media (max-width:899px){ #status{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap} }
 .menuhit{color:var(--food);font-weight:700}
+.wizard{display:flex;flex-direction:column;gap:12px;background:var(--surface);border:1.5px solid var(--line);border-radius:16px;padding:16px}
+.wizard h2{margin:0}.wizard .eyebrow{margin:0;font-size:.78rem;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:700}
+.wizages{list-style:none;padding:0;margin:0}.wizages li{display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--line)}
+.wizages small{color:var(--muted)}.stepper{display:inline-flex;align-items:center;gap:10px}.stepper b{min-width:1.5em;text-align:center;font-size:1.1rem}.stepper .icon{min-width:44px;min-height:44px;font-size:1.2rem}
+.wizrow{display:flex;flex-direction:column;gap:4px;font-weight:700}.wizrow .field{font-weight:400}
+.wizard .actions{display:flex;gap:10px}.wizard .actions .btn{flex:1 1 0}.wizard .btn-go{background:var(--route);color:#fff;border-color:var(--route)}.wizard .btn-go[disabled]{opacity:.45}.wizard .btn-alt{background:transparent;border:1.5px solid var(--line);color:var(--ink)}
+.partybox{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;padding:10px 0;border-top:1px solid var(--line);border-bottom:1px solid var(--line)}.partybox .note{margin:2px 0 0}
 .note.clamp{display:-webkit-box;-webkit-line-clamp:2;line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;margin-bottom:0}
 .noteinfo{display:inline-flex;align-items:center;gap:4px;margin:2px 0 6px;padding:2px 10px;min-height:30px;border-radius:999px;border:1px solid var(--line);background:transparent;color:var(--muted);font-size:.78rem;font-weight:700;cursor:pointer;align-self:flex-start}
 /* On a phone the view tabs sit at the bottom of the screen, in reach of a thumb. */
@@ -3636,9 +3643,10 @@ function renderDay(){
   var el = document.getElementById('paneDay'), id = curDayId();
   if(editingTime()){ ui.deferDay = true; return; }
   ui.deferDay = false;
+  if(ui.wiz){ el.innerHTML = wizHtml(); renderSet(); return; }
   if(!id){
     el.innerHTML = linkBanner()+firstRun()+'<div class="empty"><strong>'+(isReady() ? 'No days yet' : 'Loading your days…')+'</strong>'+
-      (isReady() ? '<p>Add a day, then fill it with rides, shows, meals and your resort. Each stop gets walking directions in your maps app.</p><div class="quick x-trip"><button class="btn btn-plain btn-small" data-act="newday">Add your first day</button></div>' : '')+'</div>'+(phoneLayout() ? '' : settingsHtml());
+      (isReady() ? '<p>Start with who’s going and when; the planner sets the pace and filters, adds your days, and builds from there. Or add a single day and pick stops yourself.</p><div class="quick x-trip"><button class="btn btn-small" data-act="wizopen">Start planning</button><button class="btn btn-plain btn-small" data-act="newday">Just add a day</button></div>' : '')+'</div>'+(phoneLayout() ? '' : settingsHtml());
     renderSet();
     return;
   }
@@ -4080,6 +4088,113 @@ function exportSection(){
   if(ui.expMsg) h += '<p class="note" role="status">'+esc(ui.expMsg)+'</p>';
   return h+'</details>';
 }
+/* Your party. The plan starts from who is going: their ages (and the shortest rider's height), how they get around,
+   what to steer clear of and what they love. Kept with the trip as settings.party; finishing the setup also sets the
+   pace, the "also traveling with" styles, Rider Switch, and this device's height and ride filters, which can all still
+   be changed by hand afterwards. Later stages build the day's plan from it. */
+var AGES = [['baby','Babies','0–2'],['little','Little kids','3–6'],['kid','Kids','7–12'],['teen','Teens','13–17'],['adult','Adults','18–64'],['senior','Seniors','65+']];
+var MOBS = [['stroller','Stroller'],['wheelchair','Wheelchair or scooter (ECV)'],['slow','Slower walkers'],['rests','Needs regular rests'],['heat','Struggles with heat']];
+var AVOIDS = [['thrill','Thrill rides & big drops'],['drops','Any drops'],['dark','Dark or scary'],['loud','Loud'],['spin','Spinning'],['wet','Getting wet'],['chars','Costumed characters'],['lines','Long lines']];
+var LOVES = [['thrills','Thrill rides'],['gentle','Gentle rides'],['shows','Shows'],['chars','Character meets'],['food','Food & snacks'],['drinks','Drinks (21+)'],['play','Play areas'],['shop','Shopping'],['night','Fireworks & nighttime'],['parades','Parades']];
+function party(){ return (S.settings && S.settings.party) || null; }
+function partyCount(p, a){ return ((p && p.n) || {})[a] || 0; }
+function partySummary(p){
+  if(!p || !p.n) return '';
+  var who = AGES.filter(function(a){ return partyCount(p, a[0]); }).map(function(a){ var n = partyCount(p, a[0]); return n+' '+(n===1 ? a[1].replace(/ies$/,'y').replace(/s$/,'').replace(/Babie$/,'Baby') : a[1]).toLowerCase(); });
+  var bits = [who.join(', ')];
+  if(p.h) bits.push('shortest rider '+(p.h<32 ? 'under 32' : p.h)+' in');
+  var mob = MOBS.filter(function(m){ return p.mob && p.mob[m[0]]; }).map(function(m){ return m[1].toLowerCase(); }); if(mob.length) bits.push(mob.join(', '));
+  var av = AVOIDS.filter(function(m){ return p.avoid && p.avoid[m[0]]; }).map(function(m){ return m[1].toLowerCase(); }); if(av.length) bits.push('avoiding '+av.join(', '));
+  var lv = LOVES.filter(function(m){ return p.love && p.love[m[0]]; }).map(function(m){ return m[1].toLowerCase(); }); if(lv.length) bits.push('loves '+lv.join(', '));
+  return bits.filter(Boolean).join(' · ');
+}
+// From the party to the planner's existing knobs.
+function partyStyles(p){
+  var out = [], has = function(a){ return partyCount(p, a) > 0; };
+  if(has('baby') || has('little')) out.push('littles');
+  if(has('kid')) out.push('kids');
+  if(has('teen')) out.push('teens');
+  if(has('senior') || (p.mob && (p.mob.wheelchair || p.mob.slow))) out.push('multi');
+  if(has('adult') && !out.length) out.push('adults');
+  else if(has('adult') && p.love && (p.love.thrills || p.love.drinks) && out.indexOf('adults')<0) out.push('adults');
+  return out.length ? out : ['adults'];
+}
+function partyMaxH(p){
+  if(p.h) { var best = 0; HEIGHTS.forEach(function(x){ if(x[0] && x[0] <= p.h) best = x[0]; }); return p.h < 32 ? 31 : best; }
+  return partyCount(p, 'baby') ? 31 : 0;
+}
+function applyParty(p){
+  S.settings.party = p;
+  var st = partyStyles(p);
+  S.settings.pace = st[0]==='adults' && st.length===1 ? 'adults' : st[0];
+  if(st.length > 1) S.settings.also = st.slice(1); else delete S.settings.also;
+  var littleOnes = partyCount(p,'baby') + partyCount(p,'little') > 0 || (p.h && p.h < 40);
+  var riders = partyCount(p,'adult') + partyCount(p,'teen') + partyCount(p,'senior') >= 2 || (partyCount(p,'adult') >= 1 && partyCount(p,'teen') >= 1);
+  if(littleOnes && riders && !(p.avoid && p.avoid.thrill)) S.settings.rs = 1;
+  var a = p.avoid || {};
+  prefs.maxH = partyMaxH(p); prefs.hideThrill = !!(a.thrill || a.drops); prefs.hideDrops = !!a.drops; prefs.hideDark = !!(a.dark || a.loud); prefs.hideSpin = !!a.spin;
+  savePrefs();
+}
+/* The guided setup: four short steps, then it fills in the trip. Opened from a new trip or from Settings, Your party. */
+var STAY_CHOICES = function(){ return RESORTS.map(function(r){ return r[0]; }).sort(function(a,b){ return sortKey(shortResort(a)).localeCompare(sortKey(shortResort(b))); }); };
+function wizOpen(){
+  var p = party() || {}, y = stayList().filter(function(x){ return x.r; })[0] || {}, ids = dayIds();
+  ui.wiz = {step:0, d:{n:Object.assign({}, p.n || {adult:2}), h:p.h || 0, mob:Object.assign({}, p.mob||{}), avoid:Object.assign({}, p.avoid||{}), love:Object.assign({}, p.love||{}),
+    a:ids[0] || y.a || '', o:ids[ids.length-1] || y.o || '', r:y.r || '', off:y.off ? 1 : 0}};
+}
+function wizHtml(){
+  var w = ui.wiz; if(!w) return '';
+  var d = w.d, steps = ['Who’s going','Watch-outs','What you love','When and where'], h = '<section class="wizard" aria-label="Plan setup"><p class="eyebrow">Plan setup · step '+(w.step+1)+' of '+steps.length+'</p><h2>'+steps[w.step]+'</h2>';
+  var chip = function(group, k, label){ var on = !!(d[group] && d[group][k]); return '<button class="type" data-act="wizchip" data-g="'+group+'" data-k="'+k+'" aria-pressed="'+on+'">'+esc(label)+'</button>'; };
+  if(w.step===0){
+    h += '<p class="note">Everyone in your group, by age. The plan sets its walking pace, breaks and suggestions from this.</p><ul class="wizages">'+AGES.map(function(a){ var n = d.n[a[0]] || 0;
+      return '<li><span><strong>'+a[1]+'</strong> <small>'+a[2]+'</small></span><span class="stepper"><button class="icon" data-act="wizn" data-k="'+a[0]+'" data-v="-1" aria-label="One fewer: '+a[1]+'"'+(n ? '' : ' disabled')+'>−</button><b aria-live="polite">'+n+'</b><button class="icon" data-act="wizn" data-k="'+a[0]+'" data-v="1" aria-label="One more: '+a[1]+'">+</button></span></li>'; }).join('')+'</ul>';
+    if((d.n.baby||0) + (d.n.little||0) + (d.n.kid||0)) h += '<label class="wizrow">Shortest rider’s height <select data-act="wizh" class="field">'+HEIGHTS.map(function(x){ return '<option value="'+x[0]+'"'+(x[0]===(d.h||0) ? ' selected' : '')+'>'+x[1]+'</option>'; }).join('')+'</select></label><p class="note">Rides have height minimums; with a height set, rides they can’t go on are flagged, and Rider Switch is suggested.</p>';
+  } else if(w.step===1){
+    h += '<p class="note">Getting around</p><div class="types">'+MOBS.map(function(m){ return chip('mob', m[0], m[1]); }).join('')+'</div>';
+    h += '<p class="note">What should the plan steer clear of? Pick anything that would upset someone, or that nobody wants.</p><div class="types">'+AVOIDS.map(function(m){ return chip('avoid', m[0], m[1]); }).join('')+'</div>';
+  } else if(w.step===2){
+    h += '<p class="note">Pick as many as you like. Plans lean toward these.</p><div class="types">'+LOVES.map(function(m){ return chip('love', m[0], m[1]); }).join('')+'</div>';
+  } else {
+    h += '<label class="wizrow">First day <input type="date" class="field" data-act="wiza" value="'+esc(d.a)+'"></label><label class="wizrow">Last day <input type="date" class="field" data-act="wizo" value="'+esc(d.o)+'"></label>'+
+      '<label class="wizrow">Where you’re staying <select class="field" data-act="wizr"><option value="">Not decided / skip</option>'+STAY_CHOICES().map(function(r){ return '<option value="'+esc(r)+'"'+(r===d.r ? ' selected' : '')+'>'+esc(shortResort(r))+'</option>'; }).join('')+'</select></label>'+
+      '<p class="note">Days you don’t have yet are added for these dates. A Disney resort stay adds early park entry and earlier Lightning Lane booking. A home or rental can be added later in Settings.</p>';
+  }
+  h += '<div class="actions">'+(w.step ? '<button class="btn btn-alt" data-act="wizstep" data-v="-1">Back</button>' : '<button class="btn btn-alt" data-act="wizclose">Cancel</button>')+
+    (w.step < steps.length-1 ? '<button class="btn btn-go" data-act="wizstep" data-v="1"'+(wizPeople(d) ? '' : ' disabled')+'>Next</button>' : '<button class="btn btn-go" data-act="wizdone">Finish setup</button>')+'</div></section>';
+  return h;
+}
+function wizPeople(d){ return AGES.reduce(function(n,a){ return n + (d.n[a[0]]||0); }, 0); }
+function wizFinish(){
+  var d = ui.wiz.d, p = {n:{}, mob:{}, avoid:{}, love:{}};
+  AGES.forEach(function(a){ if(d.n[a[0]]) p.n[a[0]] = d.n[a[0]]; });
+  ['mob','avoid','love'].forEach(function(g){ Object.keys(d[g]).forEach(function(k){ if(d[g][k]) p[g][k] = 1; }); if(!Object.keys(p[g]).length) delete p[g]; });
+  if(d.h) p.h = d.h;
+  applyParty(p);
+  var ok = /^\d{4}-\d{2}-\d{2}$/;
+  if(d.r && ok.test(d.a) && ok.test(d.o) && !stayList().some(function(y){ return y.r===d.r; })){
+    var blank = S.settings.stays.filter(function(y){ return !y.r; })[0];
+    if(blank){ blank.r = d.r; blank.a = d.a; blank.o = d.o; } else S.settings.stays.push({r:d.r, a:d.a, o:d.o});
+    syncHome();
+  }
+  var made = [];
+  if(ok.test(d.a) && ok.test(d.o) && d.a <= d.o){
+    for(var v = d.a, k = 0; v <= d.o && k < 21; v = addDays(v, 1), k++){
+      if(S.days[v]) continue;
+      S.days[v] = {stops:[]}; var d1 = startStay(v), d2 = stayAt(v,'pm'); if(d1) S.days[v].stops.push(makeStop(stayPlace(d1))); if(d2) S.days[v].stops.push(makeStop(stayPlace(d2)));
+      made.push(v);
+    }
+  }
+  ui.wiz = null;
+  if(made.length){ prefs.day = made[0]; savePrefs(); }
+  commit('@settings'); made.forEach(function(v){ commit(v); });
+  setStatus('Your party is set'+(made.length ? ', and '+made.length+' day'+(made.length>1 ? 's were' : ' was')+' added' : '')+'.');
+}
+function partySection(){
+  var p = party();
+  return '<div class="partybox x-trip"><div><strong>Your party</strong><p class="note">'+(p ? esc(partySummary(p)) : 'Tell the planner who’s going, what to avoid and what you love; it sets the pace, height and ride filters for you.')+'</p></div>'+
+    '<button class="btn btn-plain btn-small" data-act="wizopen">'+(p ? 'Edit your party' : 'Set up your party')+'</button></div>';
+}
 function settingsHtml(){
   var openS = ui.settingsOpen!=null ? ui.settingsOpen : !!window.__PDR_TEST;
   var sumBits = [prefs.maps==='apple' ? 'Apple Maps' : 'Google Maps'].concat(stayNames().slice(0,2).map(shortResort));
@@ -4088,6 +4203,7 @@ function settingsHtml(){
       '<button data-act="maps" data-v="google" aria-pressed="'+(prefs.maps==='google')+'">Google Maps</button>'+
       '<button data-act="maps" data-v="apple" aria-pressed="'+(prefs.maps==='apple')+'">Apple Maps</button></div></div>'+
     '<p class="note">The maps choice is remembered on this device.</p>'+
+    partySection()+
     webSettings()+
     '<div class="setrow home x-trip"><span id="lblPace">Who’s going</span><select class="field" id="paceSel" data-act="pace" aria-labelledby="lblPace">'+
       Object.keys(PACES).map(function(k){ return '<option value="'+k+'"'+(k===((S.settings && S.settings.pace)||'')?' selected':'')+'>'+esc(PACES[k][0])+'</option>'; }).join('')+'</select></div>'+
@@ -4460,6 +4576,12 @@ document.getElementById('app').addEventListener('click', function(ev){
       if(S.trip && !tripReg()[S.trip]){ S.trip = ''; prefs.trip = ''; savePrefs(); loadTripLocal(); S.ready = S.mode!=='db'; if(S.db) subscribeTrip(); }
       activate(); render(); break;
     case 'pane': prefs.pane = b.dataset.v; savePrefs(); applyPane(); break;
+    case 'wizopen': wizOpen(); prefs.pane = 'day'; savePrefs(); applyPane(); renderDay(); window.scrollTo(0,0); break;
+    case 'wizclose': ui.wiz = null; renderDay(); break;
+    case 'wizstep': if(ui.wiz){ ui.wiz.step = Math.max(0, Math.min(3, ui.wiz.step + (+b.dataset.v))); renderDay(); window.scrollTo(0,0); } break;
+    case 'wizn': if(ui.wiz){ var wn = ui.wiz.d.n; wn[b.dataset.k] = Math.max(0, Math.min(20, (wn[b.dataset.k]||0) + (+b.dataset.v))); renderDay(); } break;
+    case 'wizchip': if(ui.wiz){ var wg = ui.wiz.d[b.dataset.g]; wg[b.dataset.k] = !wg[b.dataset.k]; renderDay(); } break;
+    case 'wizdone': if(ui.wiz) wizFinish(); break;
     case 'zonemore': ui.moreZones = !ui.moreZones; renderAdd(); break;
     case 'tripmenu': ui.tripMenu = !(ui.tripMenu || ui.tripEdit); if(!ui.tripMenu) ui.tripEdit = null; renderTrips(); break;
     case 'gosettings':
@@ -4803,6 +4925,7 @@ function sortByTime(day){
 }
 document.getElementById('app').addEventListener('change', function(ev){
   var t = ev.target, id = curDayId(), day = id ? S.days[id] : null;
+  if(ui.wiz && /^wiz[haor]$/.test(t.dataset.act||'')){ var wk = {wizh:'h', wiza:'a', wizo:'o', wizr:'r'}[t.dataset.act]; ui.wiz.d[wk] = wk==='h' ? (+t.value||0) : t.value; if(wk==='a' && (!ui.wiz.d.o || ui.wiz.d.o < t.value)) ui.wiz.d.o = t.value; renderDay(); return; }
   if(t.dataset.act==='minh'){ prefs.maxH = +t.value || 0; savePrefs(); renderDay(); renderAdd(); return; }
   if(t.dataset.act==='tripsel'){ switchTrip(t.value); return; }
   if(t.dataset.act==='rasel'){ ui.raR = t.value; renderAdd(); return; }
@@ -5032,7 +5155,13 @@ var DGUESS = (function(){
                'parkschedule','showtimes','entertainment','characterappearances','mobilefoodorder','orderahead','diningreservations',
                'checkin','resortcheckin','digitalkey','magicbandplus','linkedtickets','friendsandfamily','familyandfriends','guestservices','help'];
   // Round 3 (Oct 15): none of these 32 opened a screen, so the guessing is closed. Kept here as a record.
-  return paths.length && false ? paths.map(function(x){ return {k:'x3:mdx:'+x, url:'mdx://'+x}; }) : [];
+  // Round 4 (Oct 24): aimed at the three screens that matter most: Lightning Lane, Order Now (mobile order) and Compliment a
+  // Cast Member. Single words in the style that worked, plus the Disney web pages for each, which the app may claim.
+  var r4 = ['lightninglane','lightninglanes','genie','genieplus','tipboard','ll','mobileorder','order','ordernow','orderfood','food','foodorder',
+            'castcompliments','castcompliment','compliments','compliment','castmember','recognition','feedback','contact'];
+  var web = ['https://disneyworld.disney.go.com/lightning-lane-passes/','https://disneyworld.disney.go.com/genie/','https://disneyworld.disney.go.com/dining/mobile-order/',
+             'https://disneyworld.disney.go.com/mobile-order/','https://disneyworld.disney.go.com/cast-compliments/','https://disneyworld.disney.go.com/guest-services/cast-member-compliments/'];
+  return r4.map(function(x){ return {k:'x4:mdx:'+x, url:'mdx://'+x}; }).concat(web.map(function(u, i){ return {k:'x4:web:'+i, url:u}; }));
 })();
 var DRES2 = {screen:'Opened that screen', home:'App home only', none:'Nothing / error'};
 function phoneOs(){ var ua = navigator.userAgent; return /Android/i.test(ua) ? 'android' : /iPhone|iPad|iPod/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1) ? 'ios' : 'other'; }
@@ -5066,8 +5195,8 @@ function webSettings(){
   return '<div class="websec"><h4>This phone (web app test)</h4>'+loc+
     '<h4>Disney app</h4><p class="note">Rides, shows and meals have a button that opens My Disney Experience: meals open its Dining screen, timed stops and Lightning Lane rides open My Plans, and the rest open the app’s home screen (iPhone: tested Oct 2026). To check another phone, tap Try, see what happens, come back here and pick the result.</p><ul class="dlinks">'+rows+'</ul>'+
     (DGUESS.length ? '<details class="dguess"'+(ui.dguess ? ' open' : '')+'><summary>More guesses: screens inside the app (testing only)</summary>'+
-      '<p class="note">Round 3 of guesses at shortcuts to a particular screen in My Disney Experience (found so far: dining, myplans, tickets, photopass, memorymaker, parkhours). Trying them never changes the Disney app buttons.</p><ul class="dlinks">'+
-      DGUESS.map(function(l){ return '<li><a class="btn btn-plain btn-small" href="'+esc(l.url)+'">Try</a> <code>'+esc(l.url)+'</code>'+
+      '<p class="note">Round 4: shortcuts for Lightning Lane, Order Now (mobile order) and Compliment a Cast Member (found so far: dining, myplans, tickets, photopass, memorymaker, parkhours). The web pages at the end may open the app if it claims them. Trying them never changes the Disney app buttons.</p><ul class="dlinks">'+
+      DGUESS.map(function(l){ return '<li><a class="btn btn-plain btn-small" href="'+esc(l.url)+'"'+(/^https:/.test(l.url) ? ' target="_blank" rel="noopener"' : '')+'>Try</a> <code>'+esc(l.url.replace('https://disneyworld.disney.go.com',''))+'</code>'+
         '<div class="seg dres" role="group" aria-label="What happened">'+Object.keys(DRES2).map(function(k){ return '<button data-act="dres" data-k="'+esc(l.k)+'" data-v="'+k+'" aria-pressed="'+(r[l.k]===k)+'">'+DRES2[k]+'</button>'; }).join('')+'</div></li>'; }).join('')+
       '</ul></details>' : '')+
     '<div class="quick"><button class="btn btn-plain btn-small" data-act="dcopy">Copy test results</button></div>'+
@@ -5160,7 +5289,7 @@ function firstRun(){
   if(!WEB_APP || ui.fromLink || Object.keys(S.days||{}).length) return '';
   return '<section class="linkin"><h3>Load your trip</h3><p class="note">'+(standalone() ? 'This Home Screen app keeps its own copy of the trip, separate from your browser. ' : '')+
     'In the planner in Claude (or the web app in your browser), open Settings, then Move this trip, and tap Copy the trip code. Then come back here and tap Paste trip.</p>'+
-    '<div class="quick"><button class="btn btn-small" data-act="pastetrip">Paste trip</button></div></section>';
+    '<div class="quick"><button class="btn btn-small" data-act="pastetrip">Paste trip</button><button class="btn btn-plain btn-small" data-act="wizopen">Or start a new plan</button></div></section>';
 }
 // The web app opened from the planner's link: the trip arrives in the address (after #, so it never leaves the phone).
 function linkBanner(){
