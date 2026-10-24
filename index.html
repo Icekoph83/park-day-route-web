@@ -64,6 +64,7 @@ a{color:var(--route)}
 .creditd summary{list-style:none;cursor:pointer}.creditd summary::-webkit-details-marker{display:none}.creditd summary .noteinfo{margin-left:6px}
 details.settings,details.export{scroll-margin-top:64px}
 .moretoday .morebody{display:flex;flex-direction:column;gap:10px;padding:8px 0 4px}
+.pane-set details.settings.onscreen > summary{display:none}
 .note.clamp{display:-webkit-box;-webkit-line-clamp:2;line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;margin-bottom:0}
 .noteinfo{display:inline-flex;align-items:center;gap:4px;margin:2px 0 6px;padding:2px 10px;min-height:30px;border-radius:999px;border:1px solid var(--line);background:transparent;color:var(--muted);font-size:.78rem;font-weight:700;cursor:pointer;align-self:flex-start}
 /* On a phone the view tabs sit at the bottom of the screen, in reach of a thumb. */
@@ -77,10 +78,12 @@ details.settings,details.export{scroll-margin-top:64px}
 .cols{display:grid;grid-template-columns:minmax(0,1fr);gap:20px;align-items:start}
 .pane{display:flex;flex-direction:column;gap:14px;min-width:0}
 .app[data-pane="day"] .pane-add,.app[data-pane="add"] .pane-day{display:none}
+.app:not([data-pane="set"]) .pane-set,.app[data-pane="set"] .pane-day,.app[data-pane="set"] .pane-add{display:none}
 @media (min-width:900px){
   .tabs{display:none}
   .cols{grid-template-columns:minmax(0,1.15fr) minmax(0,1fr)}
-  .app[data-pane="day"] .pane-add,.app[data-pane="add"] .pane-day{display:flex}
+  .app[data-pane="day"] .pane-add,.app[data-pane="add"] .pane-day,.app[data-pane="set"] .pane-day,.app[data-pane="set"] .pane-add{display:flex}
+  .app .pane-set,.app[data-pane="set"] .pane-set{display:none}
   /* The whole right-hand frame scrolls as one, filters and list together, so the list is never squeezed. */
   .pane-add{position:sticky;top:12px;max-height:calc(100vh - 24px);overflow-y:auto;overscroll-behavior:contain;padding-right:6px;scrollbar-gutter:stable}
   .pane-add > *{flex-shrink:0}
@@ -424,6 +427,7 @@ footer.credit{font-size:.8rem;color:var(--muted);border-top:1.5px solid var(--li
   </div>
   <main class="cols">
     <section class="pane pane-day" id="paneDay" aria-label="Route for the day"></section>
+    <section class="pane pane-set" id="paneSet" aria-label="Settings"></section>
     <section class="pane pane-add" aria-label="Add stops">
       <div class="zones" id="zones"></div>
       <input class="field search" id="search" type="search" placeholder="Search rides, shows, dining" autocomplete="off" aria-label="Search places">
@@ -3504,6 +3508,18 @@ var noteMO = null; try{ noteMO = new MutationObserver(function(){ if(noteMO.t) r
 window.addEventListener('scroll', placeNextBar, {passive:true}); window.addEventListener('resize', placeNextBar);
 
 /* ---------- render ---------- */
+/* On a phone, Settings and Print & trip recap have their own screen (the Settings tab); on a computer they stay at
+   the end of the Planning view. Only one copy is ever on the page, so inputs keep their ids. */
+var phoneMQ = window.matchMedia ? window.matchMedia('(max-width:899px)') : null, wasPhone = null;
+// The test harness (preview without ?real=1) keeps the older single-pane layout so its checks can reach every control.
+function phoneLayout(){ return !window.__PDR_TEST && !!(phoneMQ && phoneMQ.matches); }
+function renderSet(){
+  var el = document.getElementById('paneSet'); if(!el) return;
+  if(!phoneLayout()){ el.innerHTML = ''; return; }
+  el.innerHTML = '<div class="dayhead"><h2>Settings</h2><p>For the whole trip</p></div>'+settingsHtml().replace('<details class="settings"', '<details class="settings onscreen" open')+exportSection();
+}
+if(phoneMQ){ var onMQ = function(){ var p = phoneLayout(); if(p===wasPhone) return; wasPhone = p; if(!p && prefs.pane==='set') prefs.pane = 'day'; applyPane(); render(); };
+  if(phoneMQ.addEventListener) phoneMQ.addEventListener('change', onMQ); else if(phoneMQ.addListener) phoneMQ.addListener(onMQ); }
 function render(){
   syncOffPlaces();
   document.getElementById('app').classList.toggle('is-ro', isRO());
@@ -3582,7 +3598,8 @@ function renderDay(){
   ui.deferDay = false;
   if(!id){
     el.innerHTML = linkBanner()+firstRun()+'<div class="empty"><strong>'+(isReady() ? 'No days yet' : 'Loading your days…')+'</strong>'+
-      (isReady() ? '<p>Add a day, then fill it with rides, shows, meals and your resort. Each stop gets walking directions in your maps app.</p><div class="quick x-trip"><button class="btn btn-plain btn-small" data-act="newday">Add your first day</button></div>' : '')+'</div>'+settingsHtml();
+      (isReady() ? '<p>Add a day, then fill it with rides, shows, meals and your resort. Each stop gets walking directions in your maps app.</p><div class="quick x-trip"><button class="btn btn-plain btn-small" data-act="newday">Add your first day</button></div>' : '')+'</div>'+(phoneLayout() ? '' : settingsHtml());
+    renderSet();
     return;
   }
   ui.dayBy = dayBy(id);
@@ -3621,11 +3638,18 @@ function renderDay(){
   h += dropBanner(id, st);
   // The day's extra sections. In Planning they come before the route; In the park the next stop comes first, then
   // wait times and restrooms, the route, and these folded into one "More for today" section at the end.
-  var secs = outlook(id, st) + foodList(id, st) + waySection(id, st) + raSection(id, st) + familyIdeas(id, st) +
+  var secs = !park ? '' : outlook(id, st) + foodList(id, st) + waySection(id, st) + raSection(id, st) + familyIdeas(id, st) +
     dropSection(id, st) + waitSection(id, st);   // Lightning Lane drops and Wait less (with its skip-it ideas) stay on in the park
   var aux = (n && st.some(function(s){ return isTheme(s.z) || (isWater(s.z) && live[s.z]); }) ? liveBar(st) : '') +
     (n && st.some(function(x){ return PARKS[x.z] && PLACES[x.z] && PLACES[x.z].some(function(p){ return p.t==='W'; }); }) ? rrBar(st, nextI) : '');
-  if(!park) h += secs + aux;
+  if(!park){
+    // Planning: What to expect stays in view; the other sections fold into one, so the route starts sooner.
+    var tools = foodList(id, st) + waySection(id, st) + raSection(id, st) + familyIdeas(id, st) + dropSection(id, st) + waitSection(id, st);
+    var names = []; tools.replace(/<summary><span><strong>([^<]+)<\/strong>/g, function(_, t){ names.push(t.replace(/&amp;/g,'&')); return ''; });
+    h += outlook(id, st);
+    if(tools) h += '<details class="outlook moretoday plantools"'+((ui.planTools!=null ? ui.planTools : !!window.__PDR_TEST) ? ' open' : '')+'><summary><span><strong>Ideas &amp; tools for this day</strong>'+(names.length ? ' · '+esc(names.join(', ')) : '')+'</span></summary><div class="morebody">'+tools+'</div></details>';
+    h += aux;
+  }
   if(!n){
     h += '<div class="empty"><strong>Nothing planned for this day</strong><p>Pick places from the list and they are arranged into the shortest route. '+(stayNames().length && !startStay(id) && !stayAt(id,'pm') ? 'This day is outside your hotel stay, so it does not start or end there.' : 'Start and end at your resort so the trip to and from the park is part of it.')+'</p><div class="quick x-trip">'+homeButtons(st, id)+'<button class="btn btn-plain btn-small" data-act="pane" data-v="add">Add stops</button></div></div>';
   } else if(nextI<0){
@@ -3764,15 +3788,15 @@ function renderDay(){
     (done ? '<button class="btn btn-plain btn-small x-mark" data-act="reset">Clear done marks</button>' : '')+
     '<button class="btn btn-plain btn-small x-trip" data-act="rmday">'+(ui.confirm==='rmday' ? 'Tap again to remove this day' : 'Remove this day')+'</button></div>';
   if(n > 1) h += '<p class="note">Times marked “around” are rough guesses that only help arrange the day. They assume '+(id===todayId() ? 'you start from now' : 'the day starts at '+fmtMin(dayOpen(id, st))+' at the first stop, which is park opening'+(dayEarly(id) && (function(){ var f = st.filter(function(x){ return !x.done && PARKS[x.z] && PARKS[x.z].gate; })[0]; return f && !isWater(f.z); })() ? ' less the '+EE_MIN+' min of early entry' : ''))+', the usual wait plus 10 min at a ride that has wait history (35 min at other attractions, and 10 min in line where you hold a Lightning Lane, arriving any time in its return window), 30 at a show, '+pace()[3]+' at a meal, 20 at a shop, '+CHECK_MIN+' to check in or out of a hotel mid-day and 45 for a transfer (between resorts: a walk for neighbours, 20 to 30 by Skyliner, monorail or boat, 60 where you have to change)'+(stayList().some(function(y){ return y.r && stayMode(y); }) ? ' (by car: your drive plus time from car to gate)' : '')+(pace()[2] ? ', plus '+pace()[2]+' min at each ride or show for your group' : '')+'. Pace: '+esc(pace()[0].toLowerCase())+' (change it under Settings).</p>';
-  h += exportSection();
-  h += settingsHtml();
+  if(!phoneLayout()){ h += exportSection(); h += settingsHtml(); }
+  else h += '<div class="quick"><button class="btn btn-plain btn-small" data-act="gosettings">Settings, print &amp; trip recap</button></div>';
   }
   // The next stop, pinned to the top of the screen once its card has scrolled away.
   if(nextI>=0) h = '<div class="nextbar" id="nextbar" hidden><button class="nbtext" data-act="tonext"><span>Next</span> <strong>'+esc(title(st[nextI], nextI, n))+'</strong>'+
     (stopSummary(st[nextI], id, clock) ? ' · '+esc(stopSummary(st[nextI], id, clock)) : '')+'</button>'+
     (id===todayId() && ((S.owner && S.mode==='db') || WEB_APP) ? '<button class="nbref" data-act="refreshlive" aria-label="Refresh wait times"'+(refresh.busy || webLiveBusy || Date.now() < refresh.until ? ' disabled' : '')+'>'+(refresh.busy || webLiveBusy ? '…' : '↻')+'</button>' : '')+
     '<a class="nbgo" id="nbgo" target="_blank" rel="noopener" href="#">Go</a></div>'+h;
-  el.innerHTML = h; applyQSearch();
+  el.innerHTML = h; applyQSearch(); renderSet();
   var go = el.querySelector('section.next .btn-go'), nb = document.getElementById('nbgo');
   if(nb){ if(go && go.href){ nb.href = go.href; } else nb.remove(); }
   placeNextBar();
@@ -4378,9 +4402,11 @@ document.getElementById('app').addEventListener('click', function(ev){
     case 'pane': prefs.pane = b.dataset.v; savePrefs(); applyPane(); break;
     case 'zonemore': ui.moreZones = !ui.moreZones; renderAdd(); break;
     case 'tripmenu': ui.tripMenu = !(ui.tripMenu || ui.tripEdit); if(!ui.tripMenu) ui.tripEdit = null; renderTrips(); break;
-    case 'gosettings': prefs.pane = 'day'; savePrefs(); applyPane(); ui.settingsOpen = true; renderDay();
+    case 'gosettings':
+      if(phoneLayout()){ prefs.pane = 'set'; savePrefs(); ui.settingsOpen = true; renderSet(); applyPane(); window.scrollTo(0,0); break; }
+      prefs.pane = 'day'; savePrefs(); applyPane(); ui.settingsOpen = true; renderDay();
       (function(){ var d = document.querySelector('#paneDay details.settings');
-        // Settings live in the Planning view; from In the park, switch over and say so.
+        // On a computer, Settings live at the end of the Planning view; from In the park, switch over and say so.
         if(!d && id){ prefs.viewFor = prefs.viewFor || {}; prefs.viewFor[id] = 'plan'; savePrefs(); renderDay(); d = document.querySelector('#paneDay details.settings'); if(d) setStatus('Switched to Planning to show Settings.'); }
         if(d){ d.open = true; d.scrollIntoView({block:'start', behavior:'smooth'}); } })(); break;
     case 'tripnew': ui.tripEdit = ui.tripEdit==='new' ? null : 'new'; ui.confirm = null; renderTrips(); var tn = document.getElementById('tripName'); if(tn) tn.focus(); break;
@@ -4801,7 +4827,7 @@ document.getElementById('app').addEventListener('focusout', function(ev){
 
   } else if(t.id==='newDayDate') setTimeout(catchUp, 0);
 });
-document.getElementById('app').addEventListener('toggle', function(ev){ var t = ev.target; if(!t || !t.classList) return; if(t.classList.contains('settings')){ ui.settingsOpen = t.open; return; } if(t.classList.contains('moretoday')){ ui.moreToday = t.open; return; } if(t.classList.contains('export')){ ui.expOpen = t.open; return; } if(t.classList.contains('recapday')){ (ui.recapOpen = ui.recapOpen || {})[t.dataset.day] = t.open; return; } if(t.classList.contains('dguess')){ ui.dguess = t.open; return; } if(t.classList.contains('famideas')){ (ui.famOpen = ui.famOpen || {})[t.dataset.k] = t.open; return; } if(t.classList.contains('rasec')){ (ui.raOpen = ui.raOpen || {})[t.dataset.r] = t.open; return; } if(t.classList.contains('stay')){ (ui.stayOpen = ui.stayOpen || {})[t.dataset.i] = t.open; return; } if(t.classList.contains('calx')){ ui.cal = t.open; return; } if(t.classList.contains('wayx')){ ui.way = t.open; return; } if(t.classList.contains('rainplan')){ ui.rain = t.open; return; } if(t.classList.contains('waitless')){ ui.waitOpen = t.open; if(t.open && !t.dataset.trip) setTimeout(renderDay, 0); } else if(t.classList.contains('drops')) ui.drops = t.open; else if(t.classList.contains('dropset')) ui.dropSet = t.open; else if(t.classList.contains('foodlist')) ui.food = t.open; else if(t.classList.contains('outlook')) ui.outlook = t.open; else if(t.classList.contains('seas')) ui.seasOpen[t.dataset.k] = t.open; }, true);
+document.getElementById('app').addEventListener('toggle', function(ev){ var t = ev.target; if(!t || !t.classList) return; if(t.classList.contains('settings')){ ui.settingsOpen = t.open; return; } if(t.classList.contains('plantools')){ ui.planTools = t.open; return; } if(t.classList.contains('moretoday')){ ui.moreToday = t.open; return; } if(t.classList.contains('export')){ ui.expOpen = t.open; return; } if(t.classList.contains('recapday')){ (ui.recapOpen = ui.recapOpen || {})[t.dataset.day] = t.open; return; } if(t.classList.contains('dguess')){ ui.dguess = t.open; return; } if(t.classList.contains('famideas')){ (ui.famOpen = ui.famOpen || {})[t.dataset.k] = t.open; return; } if(t.classList.contains('rasec')){ (ui.raOpen = ui.raOpen || {})[t.dataset.r] = t.open; return; } if(t.classList.contains('stay')){ (ui.stayOpen = ui.stayOpen || {})[t.dataset.i] = t.open; return; } if(t.classList.contains('calx')){ ui.cal = t.open; return; } if(t.classList.contains('wayx')){ ui.way = t.open; return; } if(t.classList.contains('rainplan')){ ui.rain = t.open; return; } if(t.classList.contains('waitless')){ ui.waitOpen = t.open; if(t.open && !t.dataset.trip) setTimeout(renderDay, 0); } else if(t.classList.contains('drops')) ui.drops = t.open; else if(t.classList.contains('dropset')) ui.dropSet = t.open; else if(t.classList.contains('foodlist')) ui.food = t.open; else if(t.classList.contains('outlook')) ui.outlook = t.open; else if(t.classList.contains('seas')) ui.seasOpen[t.dataset.k] = t.open; }, true);
 setInterval(function(){
   var id = curDayId(); if(!id || id!==todayId() || document.hidden) return;
   var d = dropNow(id, displayed(id)), sig = d ? d.g.key+'|'+d.left : '';
@@ -4812,10 +4838,11 @@ setInterval(function(){
 document.getElementById('search').addEventListener('input', function(ev){ ui.q = ev.target.value; renderAdd(); });
 document.getElementById('app').addEventListener('input', function(ev){ if(ev.target && ev.target.id==='qsearch'){ ui.qq = ev.target.value; applyQSearch(); } });
 function applyPane(){
-  var v = prefs.pane==='add' ? 'add' : 'day';
+  var v = prefs.pane==='add' ? 'add' : prefs.pane==='set' && phoneLayout() ? 'set' : 'day';
   document.getElementById('app').dataset.pane = v;
   document.getElementById('tabDay').setAttribute('aria-selected', v==='day');
   document.getElementById('tabAdd').setAttribute('aria-selected', v==='add');
+  document.getElementById('tabSet').setAttribute('aria-selected', v==='set');
 }
 
 loadLocal(); loadMine(); if(!PLACES[prefs.zone] && prefs.zone!=='FV' && prefs.zone!=='CH' && prefs.zone!=='RA') prefs.zone = 'MK';
@@ -5031,6 +5058,7 @@ function codeDiff(j){
   return {days:out, settings:setChanged};
 }
 function applyCode(j, d){
+  if(prefs.pane==='set'){ prefs.pane = 'day'; savePrefs(); applyPane(); }   // after loading a trip, show its route
   d.days.forEach(function(x){ S.days[x.id] = clone(j.days[x.id]); });
   if(d.settings){ var tgt = S.scope==='own' ? own : shared; Object.keys(tgt.settings).forEach(function(k){ delete tgt.settings[k]; }); Object.assign(tgt.settings, clone(j.settings)); activate(); }
   saveLocal();
