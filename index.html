@@ -3701,6 +3701,7 @@ function renderDay(){
     // Planning: What to expect stays in view; the other sections fold into one, so the route starts sooner.
     var tools = foodList(id, st) + waySection(id, st) + raSection(id, st) + familyIdeas(id, st) + dropSection(id, st) + waitSection(id, st);
     var names = []; tools.replace(/<summary><span><strong>([^<]+)<\/strong>/g, function(_, t){ names.push(t.replace(/&amp;/g,'&')); return ''; });
+    h += buildSection(id, st);
     h += outlook(id, st);
     if(tools) h += '<details class="outlook moretoday plantools"'+((ui.planTools!=null ? ui.planTools : !!window.__PDR_TEST) ? ' open' : '')+'><summary><span><strong>Ideas &amp; tools for this day</strong>'+(names.length ? ' · '+esc(names.join(', ')) : '')+'</span></summary><div class="morebody">'+tools+'</div></details>';
     h += aux;
@@ -4202,6 +4203,159 @@ function partySection(){
   return '<div class="partybox x-trip"><div><strong>Your party</strong><p class="note">'+(p ? esc(partySummary(p)) : 'Tell the planner who’s going, what to avoid and what you love; it sets the pace, height and ride filters for you.')+'</p></div>'+
     '<button class="btn btn-plain btn-small" data-act="wizopen">'+(p ? 'Edit your party' : 'Set up your party')+'</button></div>';
 }
+/* Build my day. Pick a park and a style, and the planner fills the day from its own data, shaped by your party (ages
+   and heights, what to avoid, what you love): rides and shows that fit, ranked by the style; lunch and dinner at times
+   that suit the group; snacks; a midday break for little ones; companion restroom stops; and a nighttime show when the
+   party loves those. The route then orders everything for the least walking. Nothing is booked: table-service meals and
+   Lightning Lanes are suggestions to book in the Disney app. */
+var PLAN_STYLES = [
+  ['balanced','Balanced','The best of the park at a steady pace, with proper meals.'],
+  ['typea','Type A','Packed, rope drop to close: every headliner and as much as fits.'],
+  ['thrills','Thrill seeker','Every coaster and big ride; little-kid rides left out.'],
+  ['showsfood','Shows & food','Shows, character meets and good food, with a few big rides.'],
+  ['littles','Little ones','Gentle rides, play areas, a midday break, companion restrooms and water stops.'],
+  ['eatdrink','Eat & drink','A food and drink crawl, with a couple of rides between bites.'],
+  ['easy','Take it easy','Fewer stops, long meals, and time to wander.']
+];
+function bdPop(p){ var H = HIST[p.z+'|'+p.name]; if(!H) return 0; var v = H.h.filter(function(x){ return x!=null; }); return v.length ? v.reduce(function(a,b){ return a+b; },0)/v.length : 0; }
+function bdTags(p){
+  var i = info(p) || [0,'',''], n = i[1] || '';
+  return {thrill:/[TB]/.test(n), drops:/[Bs]/.test(n), minH:i[0] || 0, ll:i[2] || '', show:p.t==='S', meet:/^Meet |Character|Princess|Mickey Mouse at|Meet-/i.test(p.name),
+    kid:!!kidSpot(p), gentle:p.t==='A' && !i[0] && !/[TBs]/.test(n), seated:seatedShow(p), parade:/Parade|Cavalcade/i.test(p.name), night:NIGHT_SHOWS.test(p.name)};
+}
+function bdScore(p, g, style, love, avoid){
+  var pop = Math.min(8, bdPop(p)/10), s = pop + (g.ll==='S' ? 3 : g.ll==='M' ? 1 : 0);
+  var W = {
+    balanced:function(){ return 0; },
+    typea:function(){ return pop*0.5 + (p.t==='A' ? 1 : 0); },
+    thrills:function(){ return (g.thrill ? 8 : 0) - (g.gentle ? 4 : 0) - (g.show ? 3 : 0) - (g.kid ? 5 : 0); },
+    showsfood:function(){ return (g.show ? 6 : 0) + (g.meet ? 3 : 0); },
+    littles:function(){ return (g.kid ? 6 : 0) + (g.gentle ? 4 : 0) + (g.seated ? 3 : 0) + (g.meet ? 2 : 0) - (g.thrill ? 10 : 0); },
+    eatdrink:function(){ return -pop*0.5; },
+    easy:function(){ return (g.seated ? 2 : 0); }
+  };
+  s += (W[style] || W.balanced)();
+  if(love.thrills && g.thrill) s += 3; if(love.gentle && g.gentle) s += 3; if(love.shows && g.show) s += 3;
+  if(love.chars && g.meet) s += 3; if(love.play && g.kid) s += 4; if(love.parades && g.parade) s += 4;
+  if(avoid.lines && pop > 5 && !g.ll) s -= 2;
+  return s;
+}
+function bdMealPick(z, kind, style, used, near){
+  var marks = foodMarks(), dsel = dietSel(), love = (party() && party().love) || {};
+  var L = (PLACES[z]||[]).filter(function(p){ if(p.t!=='R' || used[p.name] || p.lat==null) return false; var d = DINE[p.z+'|'+p.name]; if(!d) return false;
+    var k = diningKind(p.name, p.z);
+    if(kind==='snack') return k==='snack' || /s/.test(d.svc) || (SEAS[p.z+'|'+p.name]||[]).length;
+    if(kind==='drink') return k==='bar';
+    if(kind==='booth') return isBooth(p.name, p.z);
+    if(d.per && !(kind==='lunch' ? /L/ : /D/).test(d.per)) return false;   // serves this meal
+    return /q/.test(d.svc) || (style==='eatdrink' || style==='showsfood' || style==='easy' ? /t/.test(d.svc) : false); });
+  if(dsel.length) L = L.filter(function(p){ return dietMatch(p)!=='no'; });
+  var fw = z==='EP' && typeof FW_DATES!=='undefined';
+  L.forEach(function(p){ var sc = 0, sea = SEAS[p.z+'|'+p.name] || [], dd = DINE[p.z+'|'+p.name];
+    if(kind==='lunch' || kind==='dinner') sc += /t/.test(dd.svc) && (style==='eatdrink' || style==='easy' || style==='showsfood') ? 4 : /m/.test(dd.svc) ? 3 : /t/.test(dd.svc) ? 1 : -3;   // a real meal, not a coffee or bakery counter
+    sc += sea.filter(function(o){ return marks.fav.indexOf(o.key)>=0; }).length * 5;
+    sc += Math.min(4, sea.filter(function(o){ return o.k!=='C'; }).length * 0.5);
+    if((S.settings.pfav||[]).indexOf(p.z+'|'+p.name)>=0) sc += 4;
+    var r = rates()[p.z+'|'+p.name]; if(r===3) sc += 3; else if(r===1) sc -= 6; else if(r===9) sc += 4;
+    if(love.drinks && diningKind(p.name, p.z)==='bar') sc += 2;
+    if(near) sc -= hav(near, p)/150;
+    p._sc = sc; });
+  L.sort(function(a,b){ return b._sc - a._sc; });
+  return L[0] || null;
+}
+function bdRestroom(z, near){
+  var L = (PLACES[z]||[]).filter(function(p){ return p.t==='W' && p.lat!=null && /companion/.test(p.note||''); });
+  if(near) L.sort(function(a,b){ return hav(near, a) - hav(near, b); });
+  return L[0] || null;
+}
+function hm(m){ m = Math.round(m/5)*5; return pad(Math.floor(m/60)%24)+':'+pad(m%60); }
+function buildDay(id, z, style, replace){
+  var day = S.days[id]; if(!day || !PLACES[z]) return null;
+  var p = party() || {}, love = p.love || {}, avoid = p.avoid || {}, kids = partyCount(p,'baby') + partyCount(p,'little') > 0;
+  var c = calDay(z, id) || {}, open = c.open!=null ? c.open : 9*60, close = c.close!=null ? c.close : 21*60;
+  if(dayEarly(id) && !isWater(z)) open -= EE_MIN;
+  var end = close;
+  if(style==='littles' || style==='easy') end = Math.min(close, open + 9*60);
+  if((love.night || style==='typea' || style==='showsfood') && close >= 19*60) end = close;
+  var breakMid = (style==='littles' || (kids && style!=='typea' && style!=='thrills') || (p.mob && (p.mob.rests || p.mob.heat))) ? 1 : 0;
+  var y = stayAt(id,'pm') || startStay(id), hotelBreak = breakMid && y && y.r && !y.off && RESORTS.some(function(r){ return r[0]===y.r; });
+  // Time for rides and shows: the open hours less meals, snacks and the break.
+  var mealMin = pace()[3], budget = (end - open) - 2*mealMin - (hotelBreak ? 150 : breakMid ? 45 : 0) - (style==='eatdrink' ? 180 : 0);
+  if(style==='easy') budget *= 0.6; if(style==='typea') budget *= 1.1;
+  var have = {}; day.stops.forEach(function(s){ have[s.z+'|'+s.name] = 1; });
+  var cands = PLACES[z].filter(function(x){
+    if(x.t!=='A' && x.t!=='S') return false;
+    if(have[x.z+'|'+x.name] && !replace) return false;
+    var g = bdTags(x);
+    if(g.night) return false;
+    if(avoid.chars && g.meet) return false;
+    if(rideHidden(x)) return false;
+    if(prefs.maxH && g.minH && g.minH > prefs.maxH && !(S.settings.rs && g.thrill && style!=='littles')) return false;
+    if(style==='littles' && g.thrill) return false;
+    if(x.t==='S'){ var sh = showTimes(x, id); if(sh && sh.none) return false; }
+    if(x.t==='A' && !HIST[x.z+'|'+x.name] && !g.kid && style!=='littles') return false;   // walk-throughs and minor spots only when they suit
+    return true;
+  }).map(function(x){ var g = bdTags(x); return {p:x, g:g, s:bdScore(x, g, style, love, avoid)}; }).sort(function(a,b){ return b.s - a.s; });
+  var picked = [], used = 0, rides = 0, meets = 0, cap = style==='eatdrink' ? 3 : style==='showsfood' ? 3 : 99, capM = style==='showsfood' || love.chars ? 4 : 2, mid = (open+end)/2;
+  budget *= 0.85;   // slack: waits run long, and the route's times are guesses
+  cands.forEach(function(c1){
+    if(c1.s < (style==='typea' ? -2 : 1)) return;
+    if(c1.p.t==='A' && rides >= cap) return;
+    if(c1.g.meet && meets >= capM) return;
+    var w = c1.p.t==='A' ? (typWait(c1.p, id, mid) || 15) + 10 : 30, cost = w + pace()[2] + 8 + (S.settings.rs && c1.g.thrill ? RS_EXTRA : 0);
+    if(used + cost > budget) return;
+    used += cost; picked.push(c1.p); if(c1.p.t==='A') rides++; if(c1.g.meet) meets++;
+  });
+  // Meals and snacks, near the middle of what was picked.
+  var ref = picked[0] || PARKS[z] && {lat:PARKS[z].gate[0], lng:PARKS[z].gate[1]}, usedR = {}, meals = [];
+  var addMeal = function(kind, t, pick){ var r = pick || bdMealPick(z, kind==='drink' || kind==='booth' || kind==='snack' ? kind : kind, style, usedR, ref); if(!r) return; usedR[r.name] = 1;
+    var ms = makeStop(r); ms.time = hm(t); ms.meal = kind==='drink' || kind==='booth' ? 'snack' : kind; meals.push(ms); };
+  var lunchT = kids ? 11*60+30 : 12*60, dinT = kids ? 17*60 : 18*60;
+  // With a nap back at the resort: an early lunch, then the break, and nothing else planned until you're back.
+  var brkT = kids ? 12*60+45 : 13*60, brkEnd = brkT + 120 + 45;
+  if(hotelBreak){ lunchT = 11*60; dinT = Math.max(dinT, brkEnd + 75); }
+  var free = function(t){ return !hotelBreak || t < lunchT || t > brkEnd + 15; };
+  if(open < lunchT - 60) addMeal('lunch', lunchT);
+  if(end > dinT + 60) addMeal('dinner', dinT);
+  if(style==='eatdrink'){
+    var fwOn = z==='EP' && id >= FW_DATES[0] && id <= FW_DATES[1];
+    [10*60+15, 14*60, 15*60+30, 16*60+30, 19*60+30].forEach(function(t, k){ if(t > open && t < end - 30 && free(t) && Math.abs(t - lunchT) > 45 && Math.abs(t - dinT) > 45) addMeal(fwOn ? 'booth' : (love.drinks && k%2 && partyCount(p,'adult') ? 'drink' : 'snack'), t); });
+  } else if(style==='littles' || style==='showsfood' || kids || love.food) addMeal('snack', hotelBreak ? brkEnd + 30 : 15*60);
+  // The break: back to the resort for a nap, or a cool seated show.
+  var extra = [];
+  if(hotelBreak){ var hb = makeStop(stayPlace(y)); hb.time = hm(brkT); hb.dur = 120; extra.push(hb); }
+  // Companion restrooms (and the water fountains beside them) for little ones, strollers and wheelchairs: about every two hours.
+  if(style==='littles' || kids || (p.mob && (p.mob.stroller || p.mob.wheelchair))){
+    var nR = Math.max(1, Math.round((end - open)/150)), seen = {};
+    for(var k=0; k<nR && k<4; k++){ var near = picked[Math.min(picked.length-1, Math.round((k+0.5)*picked.length/nR))] || ref, rr = bdRestroom(z, near);
+      if(rr && !seen[rr.name]){ seen[rr.name] = 1; var rs = makeStop(rr); rs.dur = 10; extra.push(rs); } }
+  }
+  // A nighttime show for those who love them, at its last showing.
+  if(love.night || style==='typea' || style==='showsfood'){
+    PLACES[z].filter(function(x){ return x.t==='S' && NIGHT_SHOWS.test(x.name); }).slice(0,1).forEach(function(x){ var sh = showTimes(x, id); if(sh && sh.times && sh.times.length){ var ns = makeStop(x); ns.time = sh.times[sh.times.length-1]; extra.push(ns); } });
+  }
+  // Put it in the day.
+  var keep = day.stops.filter(function(s){ return s.done || s.t==='H' && !s.dur || !replace; });
+  var hotels = keep.filter(function(s){ return s.t==='H' && !s.dur; }), others = keep.filter(function(s){ return !(s.t==='H' && !s.dur); });
+  var add = picked.map(makeStop).concat(meals, extra).filter(function(s){ return replace || !have[s.z+'|'+s.name] || s.meal || s.t==='W'; });
+  day.stops = (hotels.length ? [hotels[0]] : []).concat(others, add, hotels.length > 1 ? [hotels[hotels.length-1]] : []);
+  day.mode = 'auto'; day.built = {style:style, z:z};
+  return {rides:picked.filter(function(x){ return x.t==='A'; }).length, shows:picked.filter(function(x){ return x.t==='S'; }).length, meals:meals.length, extra:extra.length,
+    lunch:(meals.filter(function(m){ return m.meal==='lunch'; })[0]||{}).name, dinner:(meals.filter(function(m){ return m.meal==='dinner'; })[0]||{}).name, hotel:!!hotelBreak};
+}
+function buildSection(id, st){
+  var dayZ = st.filter(function(s){ return isTheme(s.z); }).map(function(s){ return s.z; }), z = ui.bz || dayZ[0] || 'MK', style = ui.bstyle || 'balanced';
+  var empty = !st.some(function(s){ return s.t!=='H'; });
+  var p = party(), h = '<details class="outlook buildx x-trip"'+(ui.buildOpen!=null ? (ui.buildOpen ? ' open' : '') : (empty ? ' open' : ''))+'><summary><span><strong>Build this day for me</strong> · pick a park and a style</span></summary>';
+  h += '<div class="types"><span class="quicklabel">Park</span>'+['MK','HS','EP','AK'].map(function(k){ return '<button class="type" data-act="bz" data-v="'+k+'" aria-pressed="'+(k===z)+'">'+esc({MK:'Magic Kingdom',HS:'Studios',EP:'EPCOT',AK:'Animal Kingdom'}[k])+'</button>'; }).join('')+'</div>';
+  var cur = PLAN_STYLES.filter(function(s){ return s[0]===style; })[0] || PLAN_STYLES[0];
+  h += '<div class="types"><span class="quicklabel">Style</span>'+PLAN_STYLES.map(function(s){ return '<button class="type" data-act="bstyle" data-v="'+s[0]+'" aria-pressed="'+(s[0]===style)+'">'+esc(s[1])+'</button>'; }).join('')+'</div>'+
+    '<p class="note"><strong>'+esc(cur[1])+':</strong> '+esc(cur[2])+'</p>';
+  h += '<p class="note">'+(p ? 'Shaped by your party: '+esc(partySummary(p))+'.' : 'Set up your party in Settings and plans fit your group (heights, what to avoid, what you love).')+'</p>';
+  h += '<div class="actions"><button class="btn btn-small" data-act="buildgo" data-v="replace">'+(empty ? 'Build the day' : 'Replace this day’s plan')+'</button>'+(empty ? '' : '<button class="btn btn-plain btn-small" data-act="buildgo" data-v="add">Add to what’s planned</button>')+'</div>';
+  if(ui.buildMsg) h += '<p class="note" role="status">'+esc(ui.buildMsg)+'</p>';
+  return h+'</details>';
+}
 function settingsHtml(){
   var openS = ui.settingsOpen!=null ? ui.settingsOpen : !!window.__PDR_TEST;
   var sumBits = [prefs.maps==='apple' ? 'Apple Maps' : 'Google Maps'].concat(stayNames().slice(0,2).map(shortResort));
@@ -4515,7 +4669,7 @@ document.getElementById('app').addEventListener('click', function(ev){
     if(act==='cleartime' && !isOwnStop(id, {id:b.dataset.id})) return;
     day = mineProxy = {stops: displayed(id).map(function(s){ return Object.assign({}, s); }), mode:'custom', __mine:id};
   }
-  var UNDOABLE = {rm:1, rainswap:1, outclean:1, rmday:1, optimize:1, sort:1, reset:1, addcheckout:1, addcheckin:1};
+  var UNDOABLE = {rm:1, rainswap:1, outclean:1, rmday:1, optimize:1, sort:1, reset:1, addcheckout:1, addcheckin:1, buildgo:1};
   var snap = (UNDOABLE[act] && id) ? snapDay(id) : null, rmName = act==='rm' && day ? ((day.stops.filter(function(s){ return s.id===b.dataset.id; })[0]||{}).name || '') : '';
   switch(act){
     case 'view': if(id){ prefs.viewFor = prefs.viewFor || {}; prefs.viewFor[id] = b.dataset.v; savePrefs(); window.scrollTo(0,0); renderDay(); } break;
@@ -4583,6 +4737,15 @@ document.getElementById('app').addEventListener('click', function(ev){
       if(S.trip && !tripReg()[S.trip]){ S.trip = ''; prefs.trip = ''; savePrefs(); loadTripLocal(); S.ready = S.mode!=='db'; if(S.db) subscribeTrip(); }
       activate(); render(); break;
     case 'pane': prefs.pane = b.dataset.v; savePrefs(); applyPane(); break;
+    case 'bz': ui.bz = b.dataset.v; ui.buildMsg = ''; renderDay(); break;
+    case 'bstyle': ui.bstyle = b.dataset.v; ui.buildMsg = ''; renderDay(); break;
+    case 'buildgo': if(!day) break; (function(){
+      var z = ui.bz || (displayed(id).filter(function(s){ return isTheme(s.z); })[0]||{}).z || 'MK', style = ui.bstyle || 'balanced', r = buildDay(id, z, style, b.dataset.v==='replace');
+      if(!r){ ui.buildMsg = 'Could not build this day.'; renderDay(); return; }
+      var sty = PLAN_STYLES.filter(function(x){ return x[0]===style; })[0][1];
+      ui.buildMsg = sty+' day at '+PARKS[z].name+': '+r.rides+' ride'+(r.rides===1 ? '' : 's')+(r.shows ? ', '+r.shows+' show'+(r.shows===1 ? '' : 's') : '')+
+        (r.lunch ? ', lunch at '+r.lunch : '')+(r.dinner ? ', dinner at '+r.dinner : '')+(r.hotel ? ', a midday break at the resort' : '')+'. Change anything below; table-service meals and Lightning Lanes still need booking in the Disney app.';
+      ui.buildOpen = true; commit(id); })(); break;
     case 'wizopen': wizOpen(); prefs.pane = 'day'; savePrefs(); applyPane(); renderDay(); window.scrollTo(0,0); break;
     case 'wizclose': ui.wiz = null; renderDay(); break;
     case 'wizstep': if(ui.wiz){ ui.wiz.step = Math.max(0, Math.min(3, ui.wiz.step + (+b.dataset.v))); renderDay(); window.scrollTo(0,0); } break;
@@ -4920,7 +5083,7 @@ function insertStop(day, s){
 }
 // Timed stops are anchors; untimed stops travel with the timed stop before them.
 function sortByTime(day){
-  var groups = [], cur = {time:'', items:[]};
+  var groups = [], cur = {time:'', items:[], buildgo:null};
   day.stops.forEach(function(s){ if(s.time){ if(cur.items.length) groups.push(cur); cur = {time:s.time, items:[s]}; } else cur.items.push(s); });
   if(cur.items.length) groups.push(cur);
   var head = groups.length && !groups[0].time ? groups.shift() : null, tail = null;
@@ -5017,7 +5180,7 @@ document.getElementById('app').addEventListener('focusout', function(ev){
 
   } else if(t.id==='newDayDate') setTimeout(catchUp, 0);
 });
-document.getElementById('app').addEventListener('toggle', function(ev){ var t = ev.target; if(!t || !t.classList) return; if(t.classList.contains('settings')){ ui.settingsOpen = t.open; return; } if(t.classList.contains('addmore')){ ui.addMore = t.open; return; } if(t.classList.contains('fwall')){ ui.fwAll = t.open; return; } if(t.classList.contains('plantools')){ ui.planTools = t.open; return; } if(t.classList.contains('moretoday')){ ui.moreToday = t.open; return; } if(t.classList.contains('export')){ ui.expOpen = t.open; return; } if(t.classList.contains('recapday')){ (ui.recapOpen = ui.recapOpen || {})[t.dataset.day] = t.open; return; } if(t.classList.contains('dguess')){ ui.dguess = t.open; return; } if(t.classList.contains('famideas')){ (ui.famOpen = ui.famOpen || {})[t.dataset.k] = t.open; return; } if(t.classList.contains('rasec')){ (ui.raOpen = ui.raOpen || {})[t.dataset.r] = t.open; return; } if(t.classList.contains('stay')){ (ui.stayOpen = ui.stayOpen || {})[t.dataset.i] = t.open; return; } if(t.classList.contains('calx')){ ui.cal = t.open; return; } if(t.classList.contains('wayx')){ ui.way = t.open; return; } if(t.classList.contains('rainplan')){ ui.rain = t.open; return; } if(t.classList.contains('waitless')){ ui.waitOpen = t.open; if(t.open && !t.dataset.trip) setTimeout(renderDay, 0); } else if(t.classList.contains('drops')) ui.drops = t.open; else if(t.classList.contains('dropset')) ui.dropSet = t.open; else if(t.classList.contains('foodlist')) ui.food = t.open; else if(t.classList.contains('outlook')) ui.outlook = t.open; else if(t.classList.contains('seas')) ui.seasOpen[t.dataset.k] = t.open; }, true);
+document.getElementById('app').addEventListener('toggle', function(ev){ var t = ev.target; if(!t || !t.classList) return; if(t.classList.contains('settings')){ ui.settingsOpen = t.open; return; } if(t.classList.contains('buildx')){ ui.buildOpen = t.open; return; } if(t.classList.contains('addmore')){ ui.addMore = t.open; return; } if(t.classList.contains('fwall')){ ui.fwAll = t.open; return; } if(t.classList.contains('plantools')){ ui.planTools = t.open; return; } if(t.classList.contains('moretoday')){ ui.moreToday = t.open; return; } if(t.classList.contains('export')){ ui.expOpen = t.open; return; } if(t.classList.contains('recapday')){ (ui.recapOpen = ui.recapOpen || {})[t.dataset.day] = t.open; return; } if(t.classList.contains('dguess')){ ui.dguess = t.open; return; } if(t.classList.contains('famideas')){ (ui.famOpen = ui.famOpen || {})[t.dataset.k] = t.open; return; } if(t.classList.contains('rasec')){ (ui.raOpen = ui.raOpen || {})[t.dataset.r] = t.open; return; } if(t.classList.contains('stay')){ (ui.stayOpen = ui.stayOpen || {})[t.dataset.i] = t.open; return; } if(t.classList.contains('calx')){ ui.cal = t.open; return; } if(t.classList.contains('wayx')){ ui.way = t.open; return; } if(t.classList.contains('rainplan')){ ui.rain = t.open; return; } if(t.classList.contains('waitless')){ ui.waitOpen = t.open; if(t.open && !t.dataset.trip) setTimeout(renderDay, 0); } else if(t.classList.contains('drops')) ui.drops = t.open; else if(t.classList.contains('dropset')) ui.dropSet = t.open; else if(t.classList.contains('foodlist')) ui.food = t.open; else if(t.classList.contains('outlook')) ui.outlook = t.open; else if(t.classList.contains('seas')) ui.seasOpen[t.dataset.k] = t.open; }, true);
 setInterval(function(){
   var id = curDayId(); if(!id || id!==todayId() || document.hidden) return;
   var d = dropNow(id, displayed(id)), sig = d ? d.g.key+'|'+d.left : '';
@@ -5170,7 +5333,15 @@ var DGUESS = (function(){
              'https://disneyworld.disney.go.com/mobile-order/','https://disneyworld.disney.go.com/cast-compliments/','https://disneyworld.disney.go.com/guest-services/cast-member-compliments/'];
   // Round 4 (Oct 24): every mdx:// word opened only the app's home; the Lightning Lane and Genie pages opened in Safari,
   // not the app; the others failed. Closed, kept as a record.
-  return r4.length && false ? r4.map(function(x){ return {k:'x4:mdx:'+x, url:'mdx://'+x}; }).concat(web.map(function(u, i){ return {k:'x4:web:'+i, url:u}; })) : [];
+  // Round 5 (Oct 24): new shapes. Known screens with a second part (dining has its own tabs), hyphens and underscores
+  // (in case the app's names follow Disney's web addresses), longer internal-style names, and two known screens written
+  // differently as controls (my-plans, Dining) to see what the app tolerates.
+  var r5 = ['dining/mobileorder','dining?tab=mobileorder','dining?mobileorder','dining/order','myplans/lightninglane','myplans?tab=lightninglane',
+            'mobile-order','mobile_order','lightning-lane','lightning_lane','lightning-lane-passes','cast-compliments','cast_compliments','tip-board',
+            'mobileorderlist','mobileorderlanding','mobileorderhub','orderlist','foodandbeverage','fnb','mof','llhub','lightninglanehub','lightninglanelanding',
+            'llselection','genieplushub','geniehub','tipboardhub','castappreciation','appreciation','kudos','complimentcast',
+            'my-plans','Dining'];
+  return r5.map(function(x){ return {k:'x5:mdx:'+x, url:'mdx://'+x}; });
 })();
 var DRES2 = {screen:'Opened that screen', home:'App home only', none:'Nothing / error'};
 function phoneOs(){ var ua = navigator.userAgent; return /Android/i.test(ua) ? 'android' : /iPhone|iPad|iPod/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1) ? 'ios' : 'other'; }
@@ -5204,7 +5375,7 @@ function webSettings(){
   return '<div class="websec"><h4>This phone (web app test)</h4>'+loc+
     '<h4>Disney app</h4><p class="note">Rides, shows and meals have a button that opens My Disney Experience: meals open its Dining screen, timed stops and Lightning Lane rides open My Plans, and the rest open the app’s home screen (iPhone: tested Oct 2026). To check another phone, tap Try, see what happens, come back here and pick the result.</p><ul class="dlinks">'+rows+'</ul>'+
     (DGUESS.length ? '<details class="dguess"'+(ui.dguess ? ' open' : '')+'><summary>More guesses: screens inside the app (testing only)</summary>'+
-      '<p class="note">Round 4: shortcuts for Lightning Lane, Order Now (mobile order) and Compliment a Cast Member (found so far: dining, myplans, tickets, photopass, memorymaker, parkhours). The web pages at the end may open the app if it claims them. Trying them never changes the Disney app buttons.</p><ul class="dlinks">'+
+      '<p class="note">Round 5: new shapes for Lightning Lane, Order Now and Compliment a Cast Member: second parts after screens that work, hyphens, and longer names. The last two (my-plans, Dining) are controls: known screens written differently. Found so far: dining, myplans, tickets, photopass, memorymaker, parkhours. Trying them never changes the Disney app buttons.</p><ul class="dlinks">'+
       DGUESS.map(function(l){ return '<li><a class="btn btn-plain btn-small" href="'+esc(l.url)+'"'+(/^https:/.test(l.url) ? ' target="_blank" rel="noopener"' : '')+'>Try</a> <code>'+esc(l.url.replace('https://disneyworld.disney.go.com',''))+'</code>'+
         '<div class="seg dres" role="group" aria-label="What happened">'+Object.keys(DRES2).map(function(k){ return '<button data-act="dres" data-k="'+esc(l.k)+'" data-v="'+k+'" aria-pressed="'+(r[l.k]===k)+'">'+DRES2[k]+'</button>'; }).join('')+'</div></li>'; }).join('')+
       '</ul></details>' : '')+
