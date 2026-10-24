@@ -67,6 +67,10 @@ details.settings,details.export{scroll-margin-top:64px}
 .pane-set details.settings.onscreen > summary{display:none}
 .fwall{margin:6px 0;border-top:1px solid var(--line);padding-top:6px}.fwall > summary{cursor:pointer;min-height:40px;display:flex;align-items:center;gap:4px}
 .fphoto{text-decoration:none;font-size:.95rem;padding:2px 4px;border-radius:6px;display:inline-block;min-width:28px;text-align:center}.fphoto:focus-visible{outline:2px solid var(--route)}
+.otherhead{margin-top:14px;color:var(--ink)}
+.addmore > summary{cursor:pointer;min-height:44px;display:flex;align-items:center;font-weight:700;padding:0 14px;border:1.5px dashed var(--line);border-radius:12px;list-style:none}.addmore > summary::-webkit-details-marker{display:none}.addmore[open] > summary{margin-bottom:8px}.addmore{display:flex;flex-direction:column;gap:8px}
+#status:empty{display:none}
+@media (max-width:899px){ #status{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap} }
 .note.clamp{display:-webkit-box;-webkit-line-clamp:2;line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;margin-bottom:0}
 .noteinfo{display:inline-flex;align-items:center;gap:4px;margin:2px 0 6px;padding:2px 10px;min-height:30px;border-radius:999px;border:1px solid var(--line);background:transparent;color:var(--muted);font-size:.78rem;font-weight:700;cursor:pointer;align-self:flex-start}
 /* On a phone the view tabs sit at the bottom of the screen, in reach of a thumb. */
@@ -1535,12 +1539,23 @@ function legGo(L, from){
   var first = (L.modes||'').charAt(0);
   if(first==='S' || (!first && /^Usually by Skyliner/.test(L.note||''))) return skyStation(from) ? 's' : 't';
   if(first==='W') return 'w';
+  if(busLeg(L) && busStop(from)) return 'b';
   return 't';
 }
-function goMode(L, key, from){ var c = ui.goFor && ui.goFor[key]; if(c && (c!=='s' || skyStation(from))) return c; return legGo(L, from); }
+/* Disney buses aren't in maps apps, so a bus leg walks you to the bus stop instead: at Caribbean Beach with your
+   building set, the nearest stop on the resort map; elsewhere a maps search for the bus stop at the resort or park. */
+function busLeg(L){ return !!(L && L.kind==='transfer' && !L.car && ((L.modes||'').indexOf('B')>=0 || (!L.modes && /\bbus\b/i.test(L.note||'')))); }
+function busStop(from){
+  if(!from) return null;
+  if(from.t==='H' && from.name===CBR && typeof stayByName==='function'){ var y = stayByName(from.name), i = y ? cbrInfo(y) : null; if(i && i.bus) return {n:'bus stop at '+i.bus.n.replace(/^Resort entrance/,'the resort entrance'), lat:i.bus.lat, lng:i.bus.lng}; }
+  if(PARKS[from.z] && !resortOf(from)) return {n:PARKS[from.z].name+' bus stop', q:PARKS[from.z].full+' bus stop'};
+  var r = resortOf(from); return r ? {n:shortResort(r)+' bus stop', q:r+' bus stop'} : null;
+}
+function busUrl(bs, from){ return bs.lat!=null ? skyUrl(bs, from) : searchUrl(bs.q); }
+function goMode(L, key, from){ var c = ui.goFor && ui.goFor[key]; if(c && (c!=='s' || skyStation(from)) && (c!=='b' || busStop(from))) return c; return legGo(L, from); }
 function goChips(L, key, from){
-  var m = goMode(L, key, from), keys = Object.keys(GO_MODES).concat(skyLeg(L) && skyStation(from) ? ['s'] : []);
-  return '<div class="gomodes" role="group" aria-label="How you are getting there"><span>Getting there</span>'+keys.map(function(k){ return '<button data-act="gomode" data-k="'+esc(key)+'" data-v="'+k+'" aria-pressed="'+(k===m)+'">'+(k==='s' ? 'Skyliner' : GO_MODES[k][0])+'</button>'; }).join('')+'</div>';
+  var m = goMode(L, key, from), keys = (busLeg(L) && busStop(from) ? ['b'] : []).concat(Object.keys(GO_MODES)).concat(skyLeg(L) && skyStation(from) ? ['s'] : []);
+  return '<div class="gomodes" role="group" aria-label="How you are getting there"><span>Getting there</span>'+keys.map(function(k){ return '<button data-act="gomode" data-k="'+esc(key)+'" data-v="'+k+'" aria-pressed="'+(k===m)+'">'+(k==='s' ? 'Skyliner' : k==='b' ? 'Disney bus' : GO_MODES[k][0])+'</button>'; }).join('')+'</div>';
 }
 // Show a stop on the map: a named pin on the exact spot when we have coordinates, otherwise a search for it.
 function placeUrl(s){
@@ -3692,9 +3707,9 @@ function renderDay(){
       // Leaving the hotel: directions go to the first stop, by the way you choose, and starting the day ticks off the hotel.
       h += '<p class="leg">Your starting point. First stop: <strong>'+esc(title(first, nextI+1, n))+'</strong>'+(zoneName(first) ? ' ('+esc(zoneName(first))+')' : '')+'. '+
         (L3 && L3.kind==='transfer' ? esc(L3.note)+'.' : L3 && L3.min ? 'About '+L3.min+' min walk.' : '')+'</p>';
-      var gm = goMode(L3, first.id, s), carLot = gm==='d' && PARKS[first.z] && (!L3 || L3.kind==='transfer'), sky3 = gm==='s' ? skyStation(s) : null;
+      var gm = goMode(L3, first.id, s), carLot = gm==='d' && PARKS[first.z] && (!L3 || L3.kind==='transfer'), sky3 = gm==='s' ? skyStation(s) : null, bus3 = gm==='b' ? busStop(s) : null;
       h += goChips(L3, first.id, s)+'<div class="actions">'+
-        '<a class="btn btn-go x-mark" href="'+esc(sky3 ? skyUrl(sky3, stayFrom(s)) : carLot ? dirUrl(parkStop(first.z),'d', stayFrom(s)) : dirUrl(first, gm==='s' ? 'w' : gm, stayFrom(s)))+'" target="_blank" rel="noopener" data-act="done" data-id="'+s.id+'">Start the day: '+esc(sky3 ? 'walk to the Skyliner' : carLot ? 'drive to '+PARKS[first.z].name+' parking' : GO_MODES[gm][2].toLowerCase())+'</a>'+
+        '<a class="btn btn-go x-mark" href="'+esc(bus3 ? busUrl(bus3, stayFrom(s)) : sky3 ? skyUrl(sky3, stayFrom(s)) : carLot ? dirUrl(parkStop(first.z),'d', stayFrom(s)) : dirUrl(first, gm==='s' ? 'w' : gm, stayFrom(s)))+'" target="_blank" rel="noopener" data-act="done" data-id="'+s.id+'">Start the day: '+esc(bus3 ? 'walk to the '+bus3.n : sky3 ? 'walk to the Skyliner' : carLot ? 'drive to '+PARKS[first.z].name+' parking' : GO_MODES[gm][2].toLowerCase())+'</a>'+
         '<button class="btn btn-alt x-mark" data-act="done" data-id="'+s.id+'">On our way, no directions</button></div><p class="links">'+
         link(placeUrl(first),'','Show '+first.name+' on the map');
       if(skyLeg(L3)) h += skyLink(s);
@@ -3706,9 +3721,9 @@ function renderDay(){
     else if(L2.kind==='walk') h += '<p class="leg">'+(L2.via ? 'About '+L2.min+' min from '+esc(title(st[nextI-1],nextI-1,n))+', riding '+esc(L2.via)+' (it leaves from Harambe in Africa)' : (L2.min ? 'About '+L2.min+' min walk' : 'A short walk')+' from '+esc(title(st[nextI-1],nextI-1,n))+(L2.boat ? ', '+esc(L2.boat) : ''))+'.</p>';
     else h += '<p class="leg">Transfer from '+esc(title(st[nextI-1],nextI-1,n))+'. '+esc(L2.note)+'. Directions use the way you choose below; Disney’s buses, boats, Skyliner and monorail are not in maps apps, so for those, head to the stop and use the Disney app.</p>';
     if(!(leaving && first)){
-    var prev2 = nextI>0 ? st[nextI-1] : null, far = !leaving && L2 && L2.kind==='transfer', gm2 = far ? goMode(L2, s.id, prev2) : 'w', toLot = far && gm2==='d' && PARKS[s.z], sky2 = gm2==='s' ? skyStation(prev2) : null;
+    var prev2 = nextI>0 ? st[nextI-1] : null, far = !leaving && L2 && L2.kind==='transfer', gm2 = far ? goMode(L2, s.id, prev2) : 'w', toLot = far && gm2==='d' && PARKS[s.z], sky2 = gm2==='s' ? skyStation(prev2) : null, bus2 = gm2==='b' ? busStop(prev2) : null;
     if(far) h += goChips(L2, s.id, prev2);
-    h += '<div class="actions">'+(leaving ? '' : sky2 ? link(skyUrl(sky2),'btn btn-go','Walk to the Skyliner') : toLot ? link(dirUrl(parkStop(s.z),'d'),'btn btn-go','Drive to '+PARKS[s.z].name+' parking') : link(dirUrl(s, gm2),'btn btn-go',GO_MODES[gm2][2]));
+    h += '<div class="actions">'+(leaving ? '' : bus2 ? link(busUrl(bus2),'btn btn-go','Walk to the '+bus2.n) : sky2 ? link(skyUrl(sky2),'btn btn-go','Walk to the Skyliner') : toLot ? link(dirUrl(parkStop(s.z),'d'),'btn btn-go','Drive to '+PARKS[s.z].name+' parking') : link(dirUrl(s, gm2),'btn btn-go',GO_MODES[gm2][2]));
     if(sky2 && prev2 && PARKS[prev2.z] && PARKS[s.z]) h += link(dirUrl(s,'w'),'btn btn-alt','Walk all the way');   // EPCOT to Hollywood Studios has a walkway
     if(toLot) h += link(dirUrl(s,'w'),'btn btn-alt','Walk there');
     h += '<button class="btn btn-alt x-mark" data-act="done" data-id="'+s.id+'">'+(leaving?'On our way, next stop':'Arrived, next stop')+'</button></div><p class="links">';
@@ -3736,8 +3751,10 @@ function renderDay(){
     }
     // Each label has a full form, a medium one for phones and a short one for narrow phones.
     var qb = function(k, full, md, ab){ return '<button class="btn btn-plain btn-small" data-act="meal" data-v="'+k+'" aria-label="'+esc(QUICK_ARIA[k])+'" aria-pressed="'+(!!ui.meal && ui.meal.kind===k)+'">'+(ab ? '<span class="fl">'+full+'</span><span class="md">'+(md||full)+'</span><span class="ab">'+ab+'</span>' : full)+'</button>'; };
-    h += '<div class="qrow x-trip x-plan"><span class="quicklabel">Meal</span>'+qb('breakfast','Breakfast','Breakfast','Bkfst')+qb('lunch','Lunch')+qb('dinner','Dinner')+qb('snack','Snack')+'</div>'+
+    var qrows = '<div class="qrow x-trip x-plan"><span class="quicklabel">Meal</span>'+qb('breakfast','Breakfast','Breakfast','Bkfst')+qb('lunch','Lunch')+qb('dinner','Dinner')+qb('snack','Snack')+'</div>'+
       '<div class="qrow x-trip x-plan"><span class="quicklabel">Add</span>'+qb('todo','Ride or show','Ride/show','Ride')+qb('rest','Hotel break','Break','Break')+qb('shop','Shopping','Shopping','Shop')+qb('fill','Fill time','Fill time','Fill')+'</div>';
+    // In the park the quick-add rows fold behind one button, so the route sits right under the next stop.
+    h += park ? '<details class="addmore"'+(ui.meal || ui.addMore ? ' open' : '')+'><summary>+ Add a meal, ride, break or more</summary>'+qrows+'</details>' : qrows;
     if(ui.meal && MEALS[ui.meal.kind]) h += mealPanel(id, st, clock);
     var seen = {}; st.forEach(function(x){ if(PARKS[x.z] && x.lat!=null) seen[x.z] = 1; });
     if(!park || ui.showMap) Object.keys(seen).forEach(function(pk){ h += sketch(pk, st, nextI); });
@@ -4284,7 +4301,7 @@ function renderAdd(){
     document.getElementById('results').innerHTML = renderSpecial(sid, sday, sIn, canAdd) + (sday && !canAdd ? '<li class="note">To add these, choose My order on the Route tab, or switch to My own trip.</li>' : '');
     return;
   }
-  document.getElementById('search').placeholder = isPark ? 'Search '+PARKS[prefs.zone].name : prefs.zone==='RD' ? 'Search by place or resort' : isWL ? 'Search walk-up dining' : 'Search resorts, or type any place';
+  document.getElementById('search').placeholder = isPark ? 'Search '+PARKS[prefs.zone].name+' and everywhere else' : prefs.zone==='RD' ? 'Search by place or resort' : isWL ? 'Search walk-up dining' : 'Search resorts, or type any place';
   if(isRO() && !usingMine(curDayId())){ document.getElementById('results').innerHTML = '<li class="note">This is the shared trip, which only its owner can change. To add stops of your own, choose My order on the Route tab: you keep your own plan for the day, and the trip\'s timed stops stay as meeting points. Or switch to My own trip above to plan a separate trip.</li>'; return; }
   var id = curDayId(), day = id ? S.days[id] : null, inDay = {};
   if(day) (usingMine(id) ? displayed(id) : day.stops).forEach(function(s){ inDay[s.z+'|'+s.name] = (inDay[s.z+'|'+s.name]||0)+1; });
@@ -4321,6 +4338,22 @@ function renderAdd(){
       '<div class="acts">'+(/[ASRBV]/.test(p.t) ? pStar(p) : '')+'<button class="add" data-act="add" data-i="'+i+'"'+(day?'':' disabled')+' aria-label="Add '+esc(p.name)+'">'+(c?'Add again':'Add')+'</button>'+
       (p.t==='H' && !isHome ? '<button class="add sub" data-act="sethome" data-i="'+i+'">'+(manyStays ? 'Add to my stay' : 'Make my resort')+'</button>' : '')+'</div></li>';
   });
+  // Search reaches every park and area: matches elsewhere are listed after this one's, grouped by where they are.
+  if(q.length >= 3 && !isWL){
+    var others = 0, oh = '', OTHER_Z = ['MK','HS','EP','AK','DS','RD','BB','TL'];
+    OTHER_Z.forEach(function(z){
+      if(z===prefs.zone || !PLACES[z] || others >= 40) return;
+      var hits = PLACES[z].filter(function(p){ return p.t!=='W' && p.t!=='G' && (p.name.toLowerCase().indexOf(q)>=0 || (p.at||'').toLowerCase().indexOf(q)>=0 || aliasHit(p, q)); }).slice(0, 40 - others);
+      if(!hits.length) return;
+      others += hits.length;
+      oh += '<li class="wlhead">'+esc(ZNAME[z])+'</li>'+hits.map(function(p){ var tp = typeOf(p), c = inDay[p.z+'|'+p.name];
+        return '<li class="res"><div><div class="rname">'+esc(p.name)+'</div><div class="rmeta"><span class="tag '+tp[1]+'">'+esc(tp[0])+'</span>'+(p.at ? '<span>'+esc(shortResort(p.at))+'</span>' : '')+
+          (p.t==='R' && KIND_LABEL[diningKind(p.name, p.z)] ? '<span>'+KIND_LABEL[diningKind(p.name, p.z)]+'</span>' : '')+likeBadge(p)+(c ? '<span>In this day</span>' : '')+'</div></div>'+
+          '<div class="acts"><button class="add" data-act="add2" data-z="'+p.z+'" data-i="'+PLACES[p.z].indexOf(p)+'"'+(day?'':' disabled')+' aria-label="Add '+esc(p.name)+'">'+(c ? 'Add again' : 'Add')+'</button></div></li>'; }).join('');
+    });
+    if(oh) h += '<li class="wlhead otherhead">'+(shown ? 'Also in other parks and areas' : 'Not at '+esc(ZNAME[prefs.zone]||'this park')+', but found elsewhere')+'</li>'+oh;
+    shown += others;
+  }
   if(q){
     h += '<li class="res byname"><div><div class="rname">“'+esc(ui.q.trim())+'”</div><div class="rmeta">'+(shown?'Not in the list?':'No match in the list.')+' Add it by name and your maps app will look it up.</div></div>'+
       '<div class="acts"><button class="add" data-act="addname"'+(day?'':' disabled')+'>Add</button></div></li>';
@@ -4851,7 +4884,7 @@ document.getElementById('app').addEventListener('focusout', function(ev){
 
   } else if(t.id==='newDayDate') setTimeout(catchUp, 0);
 });
-document.getElementById('app').addEventListener('toggle', function(ev){ var t = ev.target; if(!t || !t.classList) return; if(t.classList.contains('settings')){ ui.settingsOpen = t.open; return; } if(t.classList.contains('fwall')){ ui.fwAll = t.open; return; } if(t.classList.contains('plantools')){ ui.planTools = t.open; return; } if(t.classList.contains('moretoday')){ ui.moreToday = t.open; return; } if(t.classList.contains('export')){ ui.expOpen = t.open; return; } if(t.classList.contains('recapday')){ (ui.recapOpen = ui.recapOpen || {})[t.dataset.day] = t.open; return; } if(t.classList.contains('dguess')){ ui.dguess = t.open; return; } if(t.classList.contains('famideas')){ (ui.famOpen = ui.famOpen || {})[t.dataset.k] = t.open; return; } if(t.classList.contains('rasec')){ (ui.raOpen = ui.raOpen || {})[t.dataset.r] = t.open; return; } if(t.classList.contains('stay')){ (ui.stayOpen = ui.stayOpen || {})[t.dataset.i] = t.open; return; } if(t.classList.contains('calx')){ ui.cal = t.open; return; } if(t.classList.contains('wayx')){ ui.way = t.open; return; } if(t.classList.contains('rainplan')){ ui.rain = t.open; return; } if(t.classList.contains('waitless')){ ui.waitOpen = t.open; if(t.open && !t.dataset.trip) setTimeout(renderDay, 0); } else if(t.classList.contains('drops')) ui.drops = t.open; else if(t.classList.contains('dropset')) ui.dropSet = t.open; else if(t.classList.contains('foodlist')) ui.food = t.open; else if(t.classList.contains('outlook')) ui.outlook = t.open; else if(t.classList.contains('seas')) ui.seasOpen[t.dataset.k] = t.open; }, true);
+document.getElementById('app').addEventListener('toggle', function(ev){ var t = ev.target; if(!t || !t.classList) return; if(t.classList.contains('settings')){ ui.settingsOpen = t.open; return; } if(t.classList.contains('addmore')){ ui.addMore = t.open; return; } if(t.classList.contains('fwall')){ ui.fwAll = t.open; return; } if(t.classList.contains('plantools')){ ui.planTools = t.open; return; } if(t.classList.contains('moretoday')){ ui.moreToday = t.open; return; } if(t.classList.contains('export')){ ui.expOpen = t.open; return; } if(t.classList.contains('recapday')){ (ui.recapOpen = ui.recapOpen || {})[t.dataset.day] = t.open; return; } if(t.classList.contains('dguess')){ ui.dguess = t.open; return; } if(t.classList.contains('famideas')){ (ui.famOpen = ui.famOpen || {})[t.dataset.k] = t.open; return; } if(t.classList.contains('rasec')){ (ui.raOpen = ui.raOpen || {})[t.dataset.r] = t.open; return; } if(t.classList.contains('stay')){ (ui.stayOpen = ui.stayOpen || {})[t.dataset.i] = t.open; return; } if(t.classList.contains('calx')){ ui.cal = t.open; return; } if(t.classList.contains('wayx')){ ui.way = t.open; return; } if(t.classList.contains('rainplan')){ ui.rain = t.open; return; } if(t.classList.contains('waitless')){ ui.waitOpen = t.open; if(t.open && !t.dataset.trip) setTimeout(renderDay, 0); } else if(t.classList.contains('drops')) ui.drops = t.open; else if(t.classList.contains('dropset')) ui.dropSet = t.open; else if(t.classList.contains('foodlist')) ui.food = t.open; else if(t.classList.contains('outlook')) ui.outlook = t.open; else if(t.classList.contains('seas')) ui.seasOpen[t.dataset.k] = t.open; }, true);
 setInterval(function(){
   var id = curDayId(); if(!id || id!==todayId() || document.hidden) return;
   var d = dropNow(id, displayed(id)), sig = d ? d.g.key+'|'+d.left : '';
