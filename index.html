@@ -66,6 +66,7 @@ details.settings,details.export{scroll-margin-top:64px}
 .moretoday .morebody{display:flex;flex-direction:column;gap:10px;padding:8px 0 4px}
 .pane-set details.settings.onscreen > summary{display:none}
 .fwall{margin:6px 0;border-top:1px solid var(--line);padding-top:6px}.fwall > summary{cursor:pointer;min-height:40px;display:flex;align-items:center;gap:4px}
+.fphoto{text-decoration:none;font-size:.95rem;padding:2px 4px;border-radius:6px;display:inline-block;min-width:28px;text-align:center}.fphoto:focus-visible{outline:2px solid var(--route)}
 .note.clamp{display:-webkit-box;-webkit-line-clamp:2;line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;margin-bottom:0}
 .noteinfo{display:inline-flex;align-items:center;gap:4px;margin:2px 0 6px;padding:2px 10px;min-height:30px;border-radius:999px;border:1px solid var(--line);background:transparent;color:var(--muted);font-size:.78rem;font-weight:700;cursor:pointer;align-self:flex-start}
 /* On a phone the view tabs sit at the bottom of the screen, in reach of a thumb. */
@@ -2810,10 +2811,17 @@ function foodFit(g){
   return d.fl.indexOf('G')>=0 ? 'guide' : 'no';
 }
 function seasLabel(o){ return o.k==='C' ? 'Cart menu' : o.k==='P' ? 'Party exclusive' : o.k==='F' ? (o.ev || 'Festival') : (o.ev || 'Seasonal'); }
+/* Photos of a dish: a web image search for it, named with the place and park, so it opens people's photos without
+   copying anyone's pictures into the planner. */
+function foodPhotoUrl(o){
+  var place = String(o.place).replace(/^Marketplace - /,'').replace(/\s*-\s*(Temporarily Unavailable|Now Open!|New!)$/,'');
+  var q = o.item.replace(/\s*-\s*(Grande|Venti|Tall)$/,'')+' '+place+(o.k==='F' ? ' EPCOT Food and Wine 2026' : ' '+(PARKS[o.z] ? PARKS[o.z].name : 'Disney World'));
+  return 'https://www.google.com/search?tbm=isch&q='+encodeURIComponent(q);
+}
 function foodItemHtml(o, showKind){
   var fav = isFav(o.key), got = isGot(o.key);
   return '<li class="fooditem'+(got ? ' got' : '')+'">'+
-    '<span class="fname">'+esc(o.item)+(dietSel().indexOf('p')>=0 && isPlantItem(o) ? ' <span class="pbadge">Plant-based</span>' : '')+(o.desc ? '<small class="fdesc">'+esc(o.desc)+'</small>' : '')+'</span><span class="fmeta">'+(showKind && o.k!=='F' ? esc(seasLabel(o))+(o.price ? ' · ' : '') : '')+esc(priceWords(o.price))+'</span>'+
+    '<span class="fname">'+esc(o.item)+' <a class="fphoto" href="'+esc(foodPhotoUrl(o))+'" target="_blank" rel="noopener" aria-label="Photos of '+esc(o.item)+'" title="Photos">📷</a>'+(dietSel().indexOf('p')>=0 && isPlantItem(o) ? ' <span class="pbadge">Plant-based</span>' : '')+(o.desc ? '<small class="fdesc">'+esc(o.desc)+'</small>' : '')+'</span><span class="fmeta">'+(showKind && o.k!=='F' ? esc(seasLabel(o))+(o.price ? ' · ' : '') : '')+esc(priceWords(o.price))+'</span>'+
     '<span class="fbtns"><button class="star" data-act="fav" data-k="'+esc(o.key)+'" aria-pressed="'+fav+'" aria-label="Want to try: '+esc(o.item)+'">'+(fav ? '★' : '☆')+' Want to try</button>'+
     '<button class="gotbtn" data-act="got" data-k="'+esc(o.key)+'" aria-pressed="'+got+'" aria-label="Had it: '+esc(o.item)+'">'+(got ? '✓ ' : '')+'Had it</button></span></li>';
 }
