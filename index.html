@@ -1078,23 +1078,33 @@ function sbSignIn(email){
   if(!sb.client || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)){ sb.msg = 'Enter the email you were added with.'; renderSet(); renderDay(); return; }
   sb.msg = 'Sending…'; renderSet(); renderDay();
   sb.client.auth.signInWithOtp({email:email, options:{emailRedirectTo: WEB_URL}}).then(function(r){
-    sb.msg = r.error ? 'Couldn’t send the email: '+r.error.message : 'Check your email. Type the code from it below (best for the Home Screen app, which keeps its own sign-in), or open the link on this phone.';
+    sb.msg = r.error ? 'Couldn’t send the email: '+r.error.message : 'Check your email and tap the sign-in link on this phone. On an iPhone it opens in Safari; to sign in the Home Screen app too, see below.';
     sb.sent = !r.error; renderSet(); renderDay(); });
 }
+/* Signing in a second copy: on an iPhone the Home Screen app keeps its own storage, apart from Safari, and an emailed
+   link always opens Safari. So a signed-in copy can show a one-time code (its session's refresh token) to paste into
+   the other copy, which then has its own sign-in. A six-digit code from the email works here too. */
 function sbVerify(code){
-  if(!sb.client || !/^\d{6,10}$/.test(code)){ sb.msg = 'Type the code from the email.'; renderSet(); renderDay(); return; }
-  sb.client.auth.verifyOtp({email:sb.email, token:code, type:'email'}).then(function(r){
-    if(r.error){ sb.msg = 'That code didn’t work: '+r.error.message; renderSet(); renderDay(); } else location.reload(); });
+  if(!sb.client || !code){ sb.msg = 'Paste the sign-in code first.'; renderSet(); renderDay(); return; }
+  var p = /^\d{6,10}$/.test(code) ? sb.client.auth.verifyOtp({email:sb.email, token:code, type:'email'}) : sb.client.auth.refreshSession({refresh_token:code});
+  p.then(function(r){ if(r.error){ sb.msg = 'That code didn’t work ('+r.error.message+'). Make a new one in the signed-in copy and paste it right away.'; renderSet(); renderDay(); } else location.reload(); });
+}
+function sbHandoff(){
+  if(!sb.client) return;
+  sb.client.auth.getSession().then(function(r){ var s = r && r.data && r.data.session; ui.sbCode = s ? s.refresh_token : ''; renderSet(); renderDay();
+    if(ui.sbCode && navigator.clipboard) navigator.clipboard.writeText(ui.sbCode).catch(function(){}); });
 }
 function syncSection(){
   if(!WEB_APP) return '';
   var h = '<div class="websec"><h4>Sync with the planner</h4>';
   if(sb.state==='nolib') return h+'<p class="note">Sync couldn’t load (no connection?). The trip on this phone still works; it syncs the next time it opens online.</p></div>';
   if(sb.user) return h+'<p class="note">Signed in as '+esc(sb.user.email||'')+'. This trip is the same one the planner in Claude shows, and changes appear on both within seconds. If it shows no days, this email isn’t on the trip yet: ask the trip’s owner to add it.</p>'+
-    '<div class="quick"><button class="btn btn-plain btn-small" data-act="sbout">Sign out</button></div></div>';
+    '<div class="quick"><button class="btn btn-plain btn-small" data-act="sbhand">Sign in the Home Screen app too</button><button class="btn btn-plain btn-small" data-act="sbout">Sign out</button></div>'+
+    (ui.sbCode ? '<p class="note">One-time code (copied). Open the web app from your Home Screen, go to Settings, Sync with the planner, paste it under “Have a code from another copy?” and tap Sign in. It works once; make a new one if it’s refused.</p><textarea class="field codebox" readonly rows="2">'+esc(ui.sbCode)+'</textarea>' : '')+'</div>';
   return h+'<p class="note">Sign in with your email to use the same trip as the planner in Claude, kept in step automatically. Without it, this phone keeps its own copy (Move this trip still works).</p>'+
-    '<div class="quick"><input class="field" id="sbEmail" type="email" autocomplete="email" placeholder="you@example.com" aria-label="Email" value="'+esc(sb.email)+'"><button class="btn btn-small" data-act="sbin">Email me a sign-in code</button></div>'+
-    (sb.sent ? '<div class="quick"><input class="field" id="sbCode" inputmode="numeric" autocomplete="one-time-code" placeholder="Code from the email" aria-label="Sign-in code"><button class="btn btn-small" data-act="sbcode">Sign in</button></div>' : '')+
+    '<div class="quick"><input class="field" id="sbEmail" type="email" autocomplete="email" placeholder="you@example.com" aria-label="Email" value="'+esc(sb.email)+'"><button class="btn btn-small" data-act="sbin">Email me a sign-in link</button></div>'+
+    '<p class="note">Have a code from another copy? (Sign in once by the email link, which opens in Safari on an iPhone; there, tap “Sign in the Home Screen app too”.)</p>'+
+    '<div class="quick"><input class="field" id="sbCode" autocomplete="one-time-code" placeholder="Paste the sign-in code" aria-label="Sign-in code"><button class="btn btn-small" data-act="sbcode">Sign in</button></div>'+
     (sb.msg ? '<p class="note" role="status">'+esc(sb.msg)+'</p>' : '')+'</div>';
 }
 // The planner in Claude: Supabase through the connector, run as SQL.
@@ -5102,6 +5112,7 @@ document.getElementById('app').addEventListener('click', function(ev){
     case 'bstyle': ui.bstyle = b.dataset.v; ui.buildMsg = ''; renderDay(); break;
     case 'sbin': (function(){ var e = document.getElementById('sbEmail'); sb.email = (e && e.value || '').trim(); sbSignIn(sb.email); })(); break;
     case 'sbcode': (function(){ var e = document.getElementById('sbCode'); sbVerify((e && e.value || '').replace(/\s/g,'')); })(); break;
+    case 'sbhand': sbHandoff(); break;
     case 'sbout': if(sb.client) sb.client.auth.signOut(); break;
     case 'vibego': if(!day) break; (function(){ var v = document.getElementById('vibeIn'), tx = (v && v.value || '').trim().slice(0,400); if(!tx){ ui.vibe = {err:'Describe the day first.'}; renderDay(); return; } vibePlan(id, tx); })(); break;
     case 'buildgo': if(!day) break; (function(){
