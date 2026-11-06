@@ -1006,8 +1006,184 @@ function saveShared(){ try{ localStorage.setItem(tKey('pdr.data'), JSON.stringif
 function saveLocal(){ if(S.scope==='own'){ try{ localStorage.setItem(tKey('pdr.own'), JSON.stringify(own)); }catch(e){} } else saveShared(); }
 function markWriter(on){ S.wasWriter = on; try{ if(on) localStorage.setItem('pdr.writer','1'); else localStorage.removeItem('pdr.writer'); }catch(e){} }
 
+
+/* ---------- shared trip in Supabase ----------
+   The trip lives in two stores that are kept the same: the planner's own database inside Claude, and a Supabase
+   table (pdr_docs: one row per document at the same paths, with the change time "at"; data null for a deletion).
+   The web app reads and writes Supabase directly after its owner signs in by email, and gets changes live. The
+   planner in Claude reaches Supabase through the Supabase connector: on opening it pulls anything newer, pushes
+   anything newer of its own, mirrors each save, and checks again every minute while open. Newer wins per document;
+   settings are combined (mergeSettings). Only people listed in pdr_members can read or write the table. */
+var SB_URL = 'https://isainxtxjrwtdwzybesw.supabase.co', SB_KEY = 'sb_publishable_7VOiuKCpF6mydDkgl12XFQ_cf4JSOUH', SB_PROJECT = 'isainxtxjrwtdwzybesw';
+var SB_JS = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js';
+var sb = {client:null, user:null, state:'off', msg:'', email:''};
+function sbMirrored(path){ return /^(days|trips|tripdays)\//.test(path) || path==='trip/settings'; }
+function sbLoad(){
+  return new Promise(function(res){
+    if(window.supabase && window.supabase.createClient) return res(true);
+    var s = document.createElement('script'); s.src = SB_JS; s.async = true; s.onload = function(){ res(!!(window.supabase && window.supabase.createClient)); }; s.onerror = function(){ res(false); };
+    document.head.appendChild(s);
+  });
+}
+// The web app: a database with the same calls the planner's own one has (collection, doc, get, set, delete, onSnapshot).
+function sbDb(client){
+  var rows = {}, subs = [], ready = null;
+  var parent = function(p){ return p.slice(0, p.lastIndexOf('/')); }, leaf = function(p){ return p.slice(p.lastIndexOf('/')+1); };
+  var colSnap = function(p){ var docs = Object.keys(rows).filter(function(k){ return parent(k)===p && rows[k].data; }).sort().map(function(k){ var v = rows[k].data; return {id:leaf(k), data:function(){ return clone(v); }, exists:true}; }); return {docs:docs, size:docs.length, empty:!docs.length}; };
+  var docSnap = function(p){ var r = rows[p], v = r && r.data; return {id:leaf(p), exists:!!v, data:function(){ return v ? clone(v) : undefined; }}; };
+  var notify = function(path){ subs.forEach(function(s){ if(s.col ? parent(path)===s.p : path===s.p) try{ s.cb(s.col ? colSnap(s.p) : docSnap(s.p)); }catch(e){} }); };
+  var load = function(){
+    if(ready) return ready;
+    ready = client.from('pdr_docs').select('path,data,at').then(function(r){
+      if(r.error) throw r.error;
+      (r.data||[]).forEach(function(x){ rows[x.path] = {data:x.data, at:+x.at||0}; });
+      client.channel('pdr-docs').on('postgres_changes', {event:'*', schema:'public', table:'pdr_docs'}, function(ch){
+        var x = ch['new']; if(!x || !x.path) return; var cur = rows[x.path];
+        if(cur && cur.at > (+x.at||0)) return;   // an older copy than we already have
+        rows[x.path] = {data:x.data, at:+x.at||0}; notify(x.path);
+      }).subscribe();
+      sb.state = 'on'; renderSync();
+    });
+    return ready;
+  };
+  var write = function(path, data){
+    var at = (data && typeof data.at==='number' && data.at) || Date.now();
+    rows[path] = {data:data, at:at}; notify(path);
+    return client.from('pdr_docs').upsert({path:path, data:data, at:at}).then(function(r){ if(r.error){ var e = new Error(r.error.message); e.code = 'unavailable'; throw e; } });
+  };
+  var doc = function(p){ return {
+    get:function(){ return load().then(function(){ return docSnap(p); }); },
+    set:function(v){ return load().then(function(){ return write(p, clone(v)); }); },
+    delete:function(){ return load().then(function(){ return write(p, null); }); },
+    onSnapshot:function(cb, err){ var s = {p:p, col:false, cb:cb}; subs.push(s); load().then(function(){ cb(docSnap(p)); }, function(e){ if(err) err(e); }); return function(){ subs = subs.filter(function(x){ return x!==s; }); }; }
+  }; };
+  return {
+    doc: doc,
+    collection: function(p){ return {
+      doc: function(id){ return doc(p+'/'+id); },
+      get: function(){ return load().then(function(){ return colSnap(p); }); },
+      onSnapshot: function(cb, err){ var s = {p:p, col:true, cb:cb}; subs.push(s); load().then(function(){ cb(colSnap(p)); }, function(e){ if(err) err(e); }); return function(){ subs = subs.filter(function(x){ return x!==s; }); }; }
+    }; }
+  };
+}
+function sbWebStart(){
+  return sbLoad().then(function(ok){
+    if(!ok){ sb.state = 'nolib'; return null; }
+    sb.client = window.supabase.createClient(SB_URL, SB_KEY, {auth:{persistSession:true, autoRefreshToken:true, detectSessionInUrl:true}});
+    sb.client.auth.onAuthStateChange(function(ev, s){ var u = s && s.user; if(ev==='SIGNED_IN' && u && !sb.user){ location.reload(); } if(ev==='SIGNED_OUT' && sb.user){ location.reload(); } });
+    return sb.client.auth.getSession().then(function(r){ var s = r && r.data && r.data.session; sb.user = s ? s.user : null; sb.state = sb.user ? 'signedin' : 'signedout'; return sb.user ? sbDb(sb.client) : null; });
+  }).catch(function(){ sb.state = 'nolib'; return null; });
+}
+function sbSignIn(email){
+  if(!sb.client || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)){ sb.msg = 'Enter the email you were added with.'; renderSet(); renderDay(); return; }
+  sb.msg = 'Sending…'; renderSet(); renderDay();
+  sb.client.auth.signInWithOtp({email:email, options:{emailRedirectTo: WEB_URL}}).then(function(r){
+    sb.msg = r.error ? 'Couldn’t send the email: '+r.error.message : 'Check your email for a sign-in link and open it on this phone. It signs this copy of the web app in.';
+    renderSet(); renderDay(); });
+}
+function syncSection(){
+  if(!WEB_APP) return '';
+  var h = '<div class="websec"><h4>Sync with the planner</h4>';
+  if(sb.state==='nolib') return h+'<p class="note">Sync couldn’t load (no connection?). The trip on this phone still works; it syncs the next time it opens online.</p></div>';
+  if(sb.user) return h+'<p class="note">Signed in as '+esc(sb.user.email||'')+'. This trip is the same one the planner in Claude shows, and changes appear on both within seconds. If it shows no days, this email isn’t on the trip yet: ask the trip’s owner to add it.</p>'+
+    '<div class="quick"><button class="btn btn-plain btn-small" data-act="sbout">Sign out</button></div></div>';
+  return h+'<p class="note">Sign in with your email to use the same trip as the planner in Claude, kept in step automatically. Without it, this phone keeps its own copy (Move this trip still works).</p>'+
+    '<div class="quick"><input class="field" id="sbEmail" type="email" autocomplete="email" placeholder="you@example.com" aria-label="Email" value="'+esc(sb.email)+'"><button class="btn btn-small" data-act="sbin">Email me a sign-in link</button></div>'+
+    (sb.msg ? '<p class="note" role="status">'+esc(sb.msg)+'</p>' : '')+'</div>';
+}
+// The planner in Claude: Supabase through the connector, run as SQL.
+var sbm = {mcp:null, on:false, busy:false, lastU:'', timer:null, quiet:false, err:''};
+function sbSql(q){
+  return sbm.mcp.callTool('Supabase', 'execute_sql', {project_id:SB_PROJECT, query:q}, {cache:false}).then(function(r){
+    var p = r && r.payload, s = typeof p==='string' ? p : (p && typeof p.result==='string') ? p.result : (r && r.content && r.content[0] && r.content[0].text) || '';
+    if(p && typeof p==='object' && Array.isArray(p)) return p;
+    var m = /<untrusted-data-[^>]+>\s*([\s\S]*?)\s*<\/untrusted-data-/.exec(s); var body = m ? m[1] : s;
+    try{ var j = JSON.parse(body); if(j && typeof j==='object' && typeof j.result==='string') return sbParse(j.result); return Array.isArray(j) ? j : []; }catch(e){ return sbParse(body); }
+  });
+}
+function sbParse(s){ var m = /<untrusted-data-[^>]+>\s*([\s\S]*?)\s*<\/untrusted-data-/.exec(s||''); try{ var j = JSON.parse(m ? m[1] : s); return Array.isArray(j) ? j : []; }catch(e){ return []; } }
+function sbLit(s){ var tag; do{ tag = '$p'+Math.random().toString(36).slice(2,8)+'$'; }while(s.indexOf(tag)>=0); return tag+s+tag; }
+function sbPushRows(list){
+  if(!list.length) return Promise.resolve();
+  var vals = list.map(function(x){ return '('+sbLit(x.path)+', '+(x.data==null ? 'null' : sbLit(JSON.stringify(x.data))+'::jsonb')+', '+Math.max(1, Math.round(x.at||0))+')'; }).join(',\n');
+  return sbSql('insert into public.pdr_docs (path, data, at) values\n'+vals+'\non conflict (path) do update set data = excluded.data, at = excluded.at where public.pdr_docs.at <= excluded.at;');
+}
+var sbQueue = [], sbQueueT = null;
+function sbMirror(path, data){
+  if(!sbm.on || sbm.quiet || !sbMirrored(path)) return;
+  sbQueue = sbQueue.filter(function(x){ return x.path!==path; }); sbQueue.push({path:path, data:data ? clone(data) : null, at:(data && data.at) || Date.now()});
+  clearTimeout(sbQueueT); sbQueueT = setTimeout(function(){ var l = sbQueue; sbQueue = []; sbPushRows(l).catch(function(e){ sbm.err = (e && e.code) || 'error'; sbQueue = l.concat(sbQueue); renderSync(); }); }, 800);
+}
+// Wrap the planner's own database so every save is also mirrored to Supabase.
+function mirrorDb(db){
+  var wrapDoc = function(path, d){ return {
+    get:function(){ return d.get(); }, onSnapshot:function(a,b){ return d.onSnapshot(a,b); },
+    set:function(v){ return d.set(v).then(function(r){ sbMirror(path, v); return r; }); },
+    delete:function(){ return d.delete().then(function(r){ sbMirror(path, null); return r; }); },
+    update:d.update ? function(v){ return d.update(v); } : undefined
+  }; };
+  return {
+    raw: db,
+    doc: function(p){ return wrapDoc(p, db.doc(p)); },
+    collection: function(p){ var c = db.collection(p); return {
+      doc:function(id){ return wrapDoc(p+'/'+id, c.doc(id)); }, get:function(){ return c.get(); }, onSnapshot:function(a,b){ return c.onSnapshot(a,b); },
+      where:c.where ? c.where.bind(c) : undefined, orderBy:c.orderBy ? c.orderBy.bind(c) : undefined, limit:c.limit ? c.limit.bind(c) : undefined }; }
+  };
+}
+// Everything the planner's database holds for the trips, as path -> {data, at}.
+function sbLocalDocs(){
+  var raw = S.db.raw || S.db, out = {}, add = function(path, v){ if(v) out[path] = {data:v, at:+v.at||0}; };
+  return raw.collection('trips').get().then(function(ts){
+    var ids = []; ts.docs.forEach(function(d){ add('trips/'+d.id, d.data()); ids.push(d.id); });
+    var jobs = [raw.collection('days').get().then(function(s){ s.docs.forEach(function(d){ add('days/'+d.id, d.data()); }); }),
+                raw.doc('trip/settings').get().then(function(s){ if(s.exists) add('trip/settings', s.data()); })];
+    ids.forEach(function(t){
+      jobs.push(raw.collection('tripdays/'+t+'/days').get().then(function(s){ s.docs.forEach(function(d){ add('tripdays/'+t+'/days/'+d.id, d.data()); }); }));
+      jobs.push(raw.doc('tripdays/'+t+'/meta/settings').get().then(function(s){ if(s.exists) add('tripdays/'+t+'/meta/settings', s.data()); }));
+    });
+    return Promise.all(jobs).then(function(){ return out; });
+  });
+}
+function sbReconcile(full){
+  if(sbm.busy || !S.db) return Promise.resolve();
+  sbm.busy = true;
+  // Changes since the last look, by the database's own clock (devices' clocks can disagree).
+  var since = full ? '' : sbm.lastU;
+  return Promise.all([sbSql('select path, data, at, to_char(updated_at at time zone \'UTC\', \'YYYY-MM-DD"T"HH24:MI:SS.US"Z"\') as u from public.pdr_docs'+(since ? ' where updated_at > '+sbLit(since)+'::timestamptz' : '')+' order by updated_at;'), sbLocalDocs()]).then(function(r){
+    var remote = {}, local = r[1], push = [], pull = [];
+    r[0].forEach(function(x){ if(x && x.path){ remote[x.path] = {data:x.data, at:+x.at||0}; if(x.u && (!sbm.lastU || x.u > sbm.lastU)) sbm.lastU = x.u; } });
+    Object.keys(remote).forEach(function(p){
+      if(!sbMirrored(p)) return; var R = remote[p], L = local[p];
+      if(/settings$/.test(p) && L && R.data){ var m = mergeSettings(L.data, R.data); if(JSON.stringify(m)!==JSON.stringify(L.data)) pull.push({path:p, data:m}); if(JSON.stringify(m)!==JSON.stringify(R.data)) push.push({path:p, data:m, at:m.at || Date.now()}); return; }
+      if(!L){ if(R.data) pull.push({path:p, data:R.data}); return; }
+      if(R.at > L.at) pull.push({path:p, data:R.data});
+      else if(L.at > R.at) push.push({path:p, data:L.data, at:L.at});
+    });
+    if(full) Object.keys(local).forEach(function(p){ if(!remote[p] && sbMirrored(p)) push.push({path:p, data:local[p].data, at:local[p].at || 1}); });
+    var raw = S.db.raw || S.db;
+    var applied = Promise.all(pull.map(function(x){ return x.data==null ? raw.doc(x.path).delete() : raw.doc(x.path).set(x.data); }));
+    return applied.then(function(){ return sbPushRows(push); }).then(function(){ sbm.err = ''; sbm.n = (sbm.n||0) + pull.length + push.length; });
+  }).catch(function(e){ sbm.err = (e && e.code) || 'error'; sbm.why = String(e && (e.message || e)); }).then(function(){ sbm.busy = false; renderSync(); });
+}
+function sbPlannerStart(){
+  if(WEB_APP || !S.owner || sbm.on) return;
+  var p; try{ p = (window.claude && typeof window.claude.use==='function') ? window.claude.use('mcp') : Promise.resolve(null); }catch(e){ p = Promise.resolve(null); }
+  p.then(function(mcp){
+    if(!mcp) return; sbm.mcp = mcp; sbm.on = true;
+    sbReconcile(true);
+    sbm.timer = setInterval(function(){ if(document.visibilityState==='visible') sbReconcile(false); }, 60000);
+    document.addEventListener('visibilitychange', function(){ if(document.visibilityState==='visible') sbReconcile(false); });
+  }).catch(function(){});
+}
+function sbStatus(){
+  if(WEB_APP) return sb.user ? (sb.state==='on' ? ' Synced with the planner.' : ' Connecting to the planner…') : '';
+  if(!sbm.on) return '';
+  return sbm.err ? ' Web app sync paused ('+(sbm.err==='not_in_manifest' || sbm.err==='consent_required' || sbm.err==='not_granted' ? 'allow Supabase for this page in its Permissions menu' : 'will retry')+').' : ' Synced with the web app.';
+}
+
 /* ---------- sync ---------- */
 function connect(){
+  if(WEB_APP){ sbWebStart().then(function(db){ return db ? setup(db, {owner:true}) : goLocal(); }, goLocal).catch(goLocal); return; }
   var p;
   try{ p = (window.claude && typeof window.claude.use==='function') ? window.claude.use('db') : Promise.resolve(null); }
   catch(e){ p = Promise.resolve(null); }
@@ -1019,16 +1195,19 @@ function goLocal(){
   if(!S.wasWriter || WEB_APP) S.scope = 'own';
   activate(); render();
   if(WEB_APP){ webLiveStart(); if(prefs.loc) geoStart(); }
+  webTripLink();
+}
+function webTripLink(){
   if(WEB_APP && /^#trip=/.test(location.hash)){
     ui.pendingCode = decodeURIComponent(location.hash.slice(6)); ui.fromLink = true;
     try{ history.replaceState(null, '', location.pathname + location.search); }catch(e){}
     render(); window.scrollTo(0, 0);
   }
 }
-async function setup(db){
-  S.db = db; S.mode = 'db';
-  var owner = false, can = null, user = null;
-  try{ user = await window.claude.use('user'); if(user){ owner = await user.isOwner(); can = await user.can('data.write'); } }catch(e){}
+async function setup(db, opt){
+  S.db = (opt && opt.owner) ? db : mirrorDb(db); S.mode = 'db';
+  var owner = !!(opt && opt.owner), can = owner ? true : null, user = null;
+  if(!owner) try{ user = await window.claude.use('user'); if(user){ owner = await user.isOwner(); can = await user.can('data.write'); } }catch(e){}
   S.owner = !!owner;
   // can === null means the platform said nothing: keep editing on and let a refused save decide.
   S.canWrite = !user || S.owner || can !== false;
@@ -1039,8 +1218,10 @@ async function setup(db){
   try{
     subscribeTrip();
     db.collection('trips').onSnapshot(onTrips, function(){});
-    db.collection('live').onSnapshot(onLive, function(){});
+    if(!WEB_APP) db.collection('live').onSnapshot(onLive, function(){});
   }catch(e){ onSubErr(e); }
+  if(WEB_APP){ webLiveStart(); if(prefs.loc) geoStart(); webTripLink(); }
+  else sbPlannerStart();
 }
 function onDays(snap){
   var next = {};
@@ -1073,6 +1254,16 @@ function cleanSettings(v){
   if(Array.isArray(v.pfav)) o.pfav = v.pfav.filter(str).slice(0,400);
   if(Array.isArray(v.pthemes)) o.pthemes = v.pthemes.filter(str).slice(0,60);
   if(Array.isArray(v.stays)) o.stays = v.stays; else if(v.out && typeof v.out==='object') o.out = v.out;
+  // Your party and your ratings (kept from November 2026; before then they were dropped when the trip was reloaded).
+  if(v.party && typeof v.party==='object'){
+    var flags = function(x, keys){ var r = {}; if(x && typeof x==='object') keys.forEach(function(k){ if(x[k]) r[k] = 1; }); return r; }, P = {n:{}};
+    AGES.forEach(function(a){ var n = v.party.n && +v.party.n[a[0]]; if(n > 0 && n <= 20) P.n[a[0]] = Math.round(n); });
+    if(+v.party.h > 0 && +v.party.h < 80) P.h = +v.party.h;
+    [['mob',MOBS],['avoid',AVOIDS],['love',LOVES]].forEach(function(g){ var f = flags(v.party[g[0]], g[1].map(function(x){ return x[0]; })); if(Object.keys(f).length) P[g[0]] = f; });
+    if(Object.keys(P.n).length) o.party = P;
+  }
+  if(v.rate && typeof v.rate==='object'){ var R = {}; Object.keys(v.rate).slice(0,600).forEach(function(k){ var x = v.rate[k]; if(str(k) && (x===1 || x===2 || x===3 || x===9)) R[k] = x; }); if(Object.keys(R).length) o.rate = R; }
+  if(typeof v.at==='number' && v.at > 0) o.at = v.at;
   return normStays(o);
 }
 function onSubErr(){ goLocal(); }
@@ -3661,6 +3852,7 @@ function renderSync(){
   else if(S.failed){ t = 'Not saved yet. It will retry on your next change.'; warn = true; }
   else if(saving || dirty.size) t = 'Saving…';
   else t = S.owner || !S.known ? 'Saved. Shows on all your devices.' : 'Shared trip. Saved for everyone who has it.';
+  if(!warn && S.mode==='db' && S.scope!=='own') t += sbStatus();
   el.textContent = t; el.className = 'sync'+(warn?' is-warn':'');
 }
 function renderDays(){
@@ -4523,6 +4715,7 @@ function settingsHtml(){
       '<button data-act="maps" data-v="apple" aria-pressed="'+(prefs.maps==='apple')+'">Apple Maps</button></div></div>'+
     '<p class="note">The maps choice is remembered on this device.</p>'+
     partySection()+
+    syncSection()+
     webSettings()+
     '<div class="setrow home x-trip"><span id="lblPace">Who’s going</span><select class="field" id="paceSel" data-act="pace" aria-labelledby="lblPace">'+
       Object.keys(PACES).map(function(k){ return '<option value="'+k+'"'+(k===((S.settings && S.settings.pace)||'')?' selected':'')+'>'+esc(PACES[k][0])+'</option>'; }).join('')+'</select></div>'+
@@ -4901,6 +5094,8 @@ document.getElementById('app').addEventListener('click', function(ev){
     case 'pane': prefs.pane = b.dataset.v; savePrefs(); applyPane(); break;
     case 'bz': ui.bz = b.dataset.v; ui.buildMsg = ''; renderDay(); break;
     case 'bstyle': ui.bstyle = b.dataset.v; ui.buildMsg = ''; renderDay(); break;
+    case 'sbin': (function(){ var e = document.getElementById('sbEmail'); sb.email = (e && e.value || '').trim(); sbSignIn(sb.email); })(); break;
+    case 'sbout': if(sb.client) sb.client.auth.signOut(); break;
     case 'vibego': if(!day) break; (function(){ var v = document.getElementById('vibeIn'), tx = (v && v.value || '').trim().slice(0,400); if(!tx){ ui.vibe = {err:'Describe the day first.'}; renderDay(); return; } vibePlan(id, tx); })(); break;
     case 'buildgo': if(!day) break; (function(){
       var z = ui.bz || (displayed(id).filter(function(s){ return isTheme(s.z); })[0]||{}).z || 'MK', style = ui.bstyle || 'balanced', r = buildDay(id, z, style, b.dataset.v==='replace');
@@ -5965,7 +6160,7 @@ function raPane(id, day, inDay, canAdd){
 }
 
 applyPane(); render(); connect();
-window.__pdr = {likeRank:likeRank, mergeSettings:mergeSettings, codeDiff:codeDiff, resPlan:resPlan, eehOn:eehOn, closeMin:closeMin, staleItem:staleItem, liveOf:liveOf, menuHit:menuHit, showTimes:showTimes, calDay:calDay, raOn:typeof raOn!=="undefined"?raOn:null, RA:typeof RA!=="undefined"?RA:null, resortPair:resortPair, RESORTS:RESORTS, RR_WALKS:RR_WALKS, RR_SKY:RR_SKY, RR_MONO:RR_MONO, RR_BOAT:RR_BOAT, resortSpot:resortSpot, SEAS:SEAS, SEAS_ALL:SEAS_ALL, PACES:PACES, DINE:DINE, dietMatch:dietMatch, typWait:typWait, typRange:typRange, CAL:CAL, HIST:HIST, closeMin:closeMin, holidaysNear:holidaysNear, eventsOn:eventsOn, dayFactor:dayFactor, leg:leg, sortByTime:sortByTime, PLACES:PLACES, S:S, isRO:isRO, autoOrder:autoOrder, displayed:displayed, pathCost:pathCost, simulate:simulate, INFO:INFO, setLive:function(pk, at, items){ var m = {}; items.forEach(function(x){ m[x.n] = x; }); live[pk] = {at:at, items:m}; liveStamp += at; render(); }};
+window.__pdr = {commit:commit, sbReconcile:sbReconcile, sbm:sbm, likeRank:likeRank, mergeSettings:mergeSettings, codeDiff:codeDiff, resPlan:resPlan, eehOn:eehOn, closeMin:closeMin, staleItem:staleItem, liveOf:liveOf, menuHit:menuHit, showTimes:showTimes, calDay:calDay, raOn:typeof raOn!=="undefined"?raOn:null, RA:typeof RA!=="undefined"?RA:null, resortPair:resortPair, RESORTS:RESORTS, RR_WALKS:RR_WALKS, RR_SKY:RR_SKY, RR_MONO:RR_MONO, RR_BOAT:RR_BOAT, resortSpot:resortSpot, SEAS:SEAS, SEAS_ALL:SEAS_ALL, PACES:PACES, DINE:DINE, dietMatch:dietMatch, typWait:typWait, typRange:typRange, CAL:CAL, HIST:HIST, closeMin:closeMin, holidaysNear:holidaysNear, eventsOn:eventsOn, dayFactor:dayFactor, leg:leg, sortByTime:sortByTime, PLACES:PLACES, S:S, isRO:isRO, autoOrder:autoOrder, displayed:displayed, pathCost:pathCost, simulate:simulate, INFO:INFO, setLive:function(pk, at, items){ var m = {}; items.forEach(function(x){ m[x.n] = x; }); live[pk] = {at:at, items:m}; liveStamp += at; render(); }};
 })();
 </script>
 <script>if("serviceWorker" in navigator) addEventListener("load", function(){ navigator.serviceWorker.register("sw.js",{updateViaCache:"none"}).then(function(r){ r.update(); }).catch(function(){}); });</script></body></html>
