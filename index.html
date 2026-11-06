@@ -1070,8 +1070,12 @@ function sbWebStart(){
   return sbLoad().then(function(ok){
     if(!ok){ sb.state = 'nolib'; return null; }
     sb.client = window.supabase.createClient(SB_URL, SB_KEY, {auth:{persistSession:true, autoRefreshToken:true, detectSessionInUrl:true}});
-    sb.client.auth.onAuthStateChange(function(ev, s){ var u = s && s.user; if(ev==='SIGNED_IN' && u && !sb.user){ location.reload(); } if(ev==='SIGNED_OUT' && sb.user){ location.reload(); } });
-    return sb.client.auth.getSession().then(function(r){ var s = r && r.data && r.data.session; sb.user = s ? s.user : null; sb.state = sb.user ? 'signedin' : 'signedout'; return sb.user ? sbDb(sb.client) : null; });
+    // getSession waits for the client to finish reading a sign-in link's address, so no reload is needed after one
+    // (a reload on the sign-in event repeated forever while the link's address was still there).
+    return sb.client.auth.getSession().then(function(r){
+      var s = r && r.data && r.data.session; sb.user = s ? s.user : null; sb.state = sb.user ? 'signedin' : 'signedout';
+      if(/access_token|refresh_token|error_description/.test(location.hash)) try{ history.replaceState(null, '', location.pathname + location.search); }catch(e){}
+      return sb.user ? sbDb(sb.client) : null; });
   }).catch(function(){ sb.state = 'nolib'; return null; });
 }
 function sbSignIn(email){
@@ -5113,7 +5117,7 @@ document.getElementById('app').addEventListener('click', function(ev){
     case 'sbin': (function(){ var e = document.getElementById('sbEmail'); sb.email = (e && e.value || '').trim(); sbSignIn(sb.email); })(); break;
     case 'sbcode': (function(){ var e = document.getElementById('sbCode'); sbVerify((e && e.value || '').replace(/\s/g,'')); })(); break;
     case 'sbhand': sbHandoff(); break;
-    case 'sbout': if(sb.client) sb.client.auth.signOut(); break;
+    case 'sbout': if(sb.client) sb.client.auth.signOut().then(function(){ location.reload(); }); break;
     case 'vibego': if(!day) break; (function(){ var v = document.getElementById('vibeIn'), tx = (v && v.value || '').trim().slice(0,400); if(!tx){ ui.vibe = {err:'Describe the day first.'}; renderDay(); return; } vibePlan(id, tx); })(); break;
     case 'buildgo': if(!day) break; (function(){
       var z = ui.bz || (displayed(id).filter(function(s){ return isTheme(s.z); })[0]||{}).z || 'MK', style = ui.bstyle || 'balanced', r = buildDay(id, z, style, b.dataset.v==='replace');
